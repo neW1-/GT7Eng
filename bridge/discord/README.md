@@ -1,0 +1,115 @@
+# Discord Voice Bridge Sidecar
+
+Node sidecar for joining a configured Discord voice channel and playing GT7Eng race engineer audio. It uses `discord.js` for slash commands and `@discordjs/voice` for voice playback.
+
+## Commands
+
+- `/join` connects the bot to the configured or caller voice channel.
+- `/leave` disconnects from voice.
+- `/status` reports voice state, mute state, mode, and Python service health.
+- `/mode` sets bridge mode: `wake_phrase`, `quiet_driver`, or `silent`.
+- `/mute_engineer` mutes Python/TTS engineer playback.
+- `/unmute_engineer` unmutes engineer playback.
+- `/radio_check` plays a short generated test tone in voice.
+
+## Setup
+
+```bash
+cd bridge/discord
+npm install
+cp .env.example .env
+```
+
+Fill in:
+
+- `DISCORD_TOKEN`: bot token.
+- `DISCORD_CLIENT_ID`: Discord application client ID.
+- `DISCORD_GUILD_ID`: guild ID for fast guild command registration.
+- `DISCORD_VOICE_CHANNEL_ID`: preferred voice channel ID. `/join` can also use the command caller's voice channel.
+- `DISCORD_DRIVER_USER_ID`: the only user whose audio is monitored.
+- `PYTHON_SERVICE_URL`: Python service base URL.
+- `PYTHON_SERVICE_TOKEN`: optional bearer token sent to the Python service.
+- `AUTO_JOIN_ON_READY`: set to `true` to join `DISCORD_VOICE_CHANNEL_ID` as soon as Discord is ready.
+
+Register slash commands:
+
+```bash
+npm run register
+```
+
+Run the bridge:
+
+```bash
+npm start
+```
+
+## Python Service Contract
+
+The MVP polls and posts to these JSON endpoints. Missing endpoints are handled as service errors in `/status`; playback continues for local `/radio_check`.
+
+### `GET /discord/voice/jobs?limit=1`
+
+Expected response:
+
+```json
+{
+  "jobs": [
+    {
+      "id": "job-123",
+      "kind": "tts",
+      "text": "Box this lap.",
+      "audio_url": "http://127.0.0.1:8000/audio/job-123.wav"
+    }
+  ]
+}
+```
+
+The bridge plays the first job with one of `audio_url`, `audio_file`, or `text`.
+
+### `POST /discord/voice/jobs/{id}/ack`
+
+Request body:
+
+```json
+{ "status": "played" }
+```
+
+### `POST /discord/tts`
+
+Used when a job contains `text` but no audio. Expected response:
+
+```json
+{ "audio_url": "http://127.0.0.1:8000/audio/generated.wav" }
+```
+
+### `GET /health`
+
+Used by `/status`. Any 2xx response is considered healthy.
+
+### `POST /discord/engineer/mute`
+
+Request body:
+
+```json
+{ "muted": true }
+```
+
+### `POST /discord/mode`
+
+Request body:
+
+```json
+{ "mode": "quiet_driver" }
+```
+
+## Audio Receive
+
+The bridge subscribes to the configured driver's Opus receive stream and exposes packet counters in `/status`. This proves the bot can hear the driver's Discord voice without writing raw audio to disk. STT/VAD wiring is owned by the Python service and is the next implementation step.
+
+## Testing
+
+Tests do not require Discord credentials or network access:
+
+```bash
+npm test
+```

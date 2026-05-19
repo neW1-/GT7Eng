@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>GT7 Race Engineer</title>
+    <link rel="stylesheet" href="/static/styles.css" />
+  </head>
+  <body>
+    <main class="shell">
+      <section class="topbar">
+        <div>
+          <h1>GT7 Race Engineer</h1>
+          <p id="status-line">Waiting for telemetry</p>
+        </div>
+        <div class="voice">
+          <span id="voice-mode">quiet_driver</span>
+          <span id="muted">live</span>
+        </div>
+      </section>
+
+      <section class="grid">
+        <article class="panel primary">
+          <h2>Race</h2>
+          <div class="race-main">
+            <div>
+              <span class="label">Position</span>
+              <strong id="position">--</strong>
+            </div>
+            <div>
+              <span class="label">Lap</span>
+              <strong id="lap">--</strong>
+            </div>
+            <div>
+              <span class="label">Laps Left</span>
+              <strong id="laps-left">--</strong>
+            </div>
+          </div>
+        </article>
+
+        <article class="panel">
+          <h2>Pace</h2>
+          <dl>
+            <div><dt>Last</dt><dd id="last-lap">--:--.---</dd></div>
+            <div><dt>Best</dt><dd id="best-lap">--:--.---</dd></div>
+            <div><dt>Average</dt><dd id="average-lap">--:--.---</dd></div>
+          </dl>
+        </article>
+
+        <article class="panel">
+          <h2>Fuel</h2>
+          <dl>
+            <div><dt>Level</dt><dd id="fuel-level">--</dd></div>
+            <div><dt>Laps</dt><dd id="fuel-laps">--</dd></div>
+            <div><dt>Margin</dt><dd id="fuel-margin">--</dd></div>
+          </dl>
+          <p id="pit-recommendation" class="recommendation">No fuel data yet.</p>
+        </article>
+
+        <article class="panel">
+          <h2>Car</h2>
+          <dl>
+            <div><dt>Speed</dt><dd id="speed">--</dd></div>
+            <div><dt>RPM</dt><dd id="rpm">--</dd></div>
+            <div><dt>Gear</dt><dd id="gear">--</dd></div>
+          </dl>
+        </article>
+
+        <article class="panel wide">
+          <h2>Alerts</h2>
+          <ol id="alerts"></ol>
+        </article>
+
+        <article class="panel wide">
+          <h2>Test Chat</h2>
+          <form id="chat-form">
+            <input id="chat-input" type="text" placeholder="Ask: how's my fuel?" />
+            <button type="submit">Send</button>
+          </form>
+          <p id="chat-response"></p>
+        </article>
+      </section>
+    </main>
+    <script src="/static/app.js"></script>
+  </body>
+</html>

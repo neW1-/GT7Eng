@@ -214,5 +214,9 @@ marimo/_static/
 marimo/_lsp/
 __marimo__/
 
+# Node / Discord bridge
+node_modules/
+npm-debug.log*
+
 # Streamlit
 .streamlit/secrets.toml
