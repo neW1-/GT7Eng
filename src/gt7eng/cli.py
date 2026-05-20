@@ -4,6 +4,7 @@ import argparse
 import asyncio
 import importlib.util
 import shutil
+import socket
 import sys
 from pathlib import Path
 
@@ -59,6 +60,7 @@ def _doctor(config: AppConfig, *, skip_ps: bool) -> int:
         "gt-telem": importlib.util.find_spec("gt_telem") is not None,
         "fastapi": importlib.util.find_spec("fastapi") is not None,
         "uvicorn": importlib.util.find_spec("uvicorn") is not None,
+        "python-multipart": importlib.util.find_spec("multipart") is not None,
         "node": shutil.which("node") is not None,
         "npm": shutil.which("npm") is not None,
     }
@@ -69,6 +71,28 @@ def _doctor(config: AppConfig, *, skip_ps: bool) -> int:
         print(f"llm        configured: {config.llm.base_url} ({config.llm.model or 'no model'})")
     else:
         print("llm        not configured")
+
+    print(f"udp 33740  {'bind ok' if _udp_bind_ok(33740) else 'unavailable'}")
+    print(
+        "discord   "
+        + (
+            f"configured channel={config.discord.voice_channel_id or 'not set'} "
+            f"driver={config.discord.driver_user_id or 'not set'}"
+            if config.discord.guild_id or config.discord.voice_channel_id
+            else "not configured"
+        )
+    )
+    print(
+        f"tts        engine={config.tts.engine} "
+        f"say={'ok' if shutil.which('say') else 'missing'} "
+        f"piper_model={config.tts.piper_model or 'not set'}"
+    )
+    print(
+        f"stt        {'enabled' if config.stt.enabled else 'disabled'} "
+        f"engine={config.stt.engine} "
+        f"model={config.stt.model} "
+        f"package={'ok' if importlib.util.find_spec('faster_whisper') else 'missing'}"
+    )
 
     if not skip_ps and checks["gt-telem"]:
         try:
@@ -85,6 +109,17 @@ def _doctor(config: AppConfig, *, skip_ps: bool) -> int:
         print(f"ps5        manual fallback configured: {config.ps_ip}")
 
     return 0 if all(checks.values()) else 1
+
+
+def _udp_bind_ok(port: int) -> bool:
+    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    try:
+        sock.bind(("", port))
+        return True
+    except OSError:
+        return False
+    finally:
+        sock.close()
 
 
 async def _replay(config: AppConfig, path: Path, realtime: bool) -> int:

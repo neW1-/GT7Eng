@@ -44,7 +44,15 @@ export function readConfig(env = process.env) {
       jobPollIntervalMs: parseInteger(env.JOB_POLL_INTERVAL_MS, 1000, "JOB_POLL_INTERVAL_MS"),
       defaultEngineerMuted: parseBoolean(env.DEFAULT_ENGINEER_MUTED, false),
       defaultMode: mode,
-      autoJoinOnReady: parseBoolean(env.AUTO_JOIN_ON_READY, false)
+      autoJoinOnReady: parseBoolean(env.AUTO_JOIN_ON_READY, false),
+      receiveWatchdogMs: parseInteger(env.RECEIVE_WATCHDOG_MS, 120000, "RECEIVE_WATCHDOG_MS")
+    },
+    stt: {
+      enabled: parseBoolean(env.DISCORD_STT_ENABLED, false),
+      minSegmentMs: parseInteger(env.DISCORD_STT_MIN_SEGMENT_MS, 450, "DISCORD_STT_MIN_SEGMENT_MS"),
+      maxSegmentMs: parseInteger(env.DISCORD_STT_MAX_SEGMENT_MS, 6000, "DISCORD_STT_MAX_SEGMENT_MS"),
+      sampleRate: parseInteger(env.DISCORD_STT_SAMPLE_RATE, 48000, "DISCORD_STT_SAMPLE_RATE"),
+      channels: parseInteger(env.DISCORD_STT_CHANNELS, 2, "DISCORD_STT_CHANNELS")
     },
     logLevel: env.LOG_LEVEL || "info"
   };

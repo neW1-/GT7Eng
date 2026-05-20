@@ -30,6 +30,8 @@ Fill in:
 - `PYTHON_SERVICE_URL`: Python service base URL.
 - `PYTHON_SERVICE_TOKEN`: optional bearer token sent to the Python service.
 - `AUTO_JOIN_ON_READY`: set to `true` to join `DISCORD_VOICE_CHANNEL_ID` as soon as Discord is ready.
+- `DISCORD_STT_ENABLED`: set to `true` to decode the configured driver's Discord audio and send WAV speech segments to Python.
+- `RECEIVE_WATCHDOG_MS`: logs a warning when no driver audio has been observed for this long.
 
 Register slash commands:
 
@@ -104,7 +106,15 @@ Request body:
 
 ## Audio Receive
 
-The bridge subscribes to the configured driver's Opus receive stream and exposes packet counters in `/status`. This proves the bot can hear the driver's Discord voice without writing raw audio to disk. STT/VAD wiring is owned by the Python service and is the next implementation step.
+The bridge subscribes to the configured driver's Opus receive stream and exposes packet counters in `/status`. When `DISCORD_STT_ENABLED=true`, it decodes only that user's Opus stream to PCM, wraps each speech segment as WAV, and posts it to:
+
+```http
+POST /api/discord/audio
+```
+
+The Python service owns transcription and command handling. Unknown speech in `quiet_driver` mode is ignored; wake-phrase mode can fall back to the configured LLM for supported free-form questions.
+
+Playback pauses active receive streams so the bot does not transcribe its own race-radio output.
 
 ## Testing
 

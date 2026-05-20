@@ -1,11 +1,13 @@
 import asyncio
+import tempfile
 from pathlib import Path
 from typing import Any
 
 from .config import AppConfig
 from .service import RaceEngineerService
+from .stt import STTUnavailableError, create_stt
 from .telemetry import GTTelemTelemetrySource, ReplayTelemetrySource
-from .tts import MacSayTTS, TTSUnavailableError
+from .tts import TTSUnavailableError, create_tts
 
 
 def create_app(
@@ -29,7 +31,13 @@ def create_app(
 
     app_config = config or AppConfig.from_env()
     service = RaceEngineerService(app_config)
-    tts = MacSayTTS()
+    tts = create_tts(app_config.tts)
+    stt_error = None
+    try:
+        stt = create_stt(app_config.stt)
+    except STTUnavailableError as exc:
+        stt = None
+        stt_error = str(exc)
     app = FastAPI(title="GT7 Race Engineer", version="0.1.0")
     static_dir = Path(__file__).with_name("static")
     app.mount("/static", StaticFiles(directory=static_dir), name="static")
@@ -53,7 +61,17 @@ def create_app(
 
     @app.get("/api/status")
     async def status() -> dict[str, Any]:
-        return service.status()
+        payload = service.status()
+        payload["audio"] = {
+            "tts": tts.status(),
+            "stt": stt.status() if stt is not None else {
+                "enabled": app_config.stt.enabled,
+                "engine": app_config.stt.engine,
+                "ready": False,
+                "error": stt_error,
+            },
+        }
+        return payload
 
     @app.get("/health")
     async def health() -> dict[str, str]:
@@ -69,7 +87,43 @@ def create_app(
 
     @app.post("/api/discord/transcript")
     async def discord_transcript(request: CommandRequest) -> dict:
-        return service.handle_command(request.text, "discord")
+        return service.handle_transcript(request.text, "discord")
+
+    @app.post("/api/discord/audio")
+    async def discord_audio(request: Request) -> dict:
+        if not app_config.stt.enabled:
+            return {"ok": False, "error": "STT is disabled. Set GT7ENG_STT_ENABLED=true."}
+        if stt is None:
+            return {"ok": False, "error": stt_error or "STT is unavailable."}
+
+        data, meta = await _read_audio_request(request)
+        if not data:
+            return {"ok": False, "error": "audio is required"}
+
+        tmp_path = _write_temp_audio(data)
+        try:
+            result = stt.transcribe(tmp_path)
+        except STTUnavailableError as exc:
+            return {"ok": False, "error": str(exc)}
+        finally:
+            if not app_config.stt.keep_audio:
+                tmp_path.unlink(missing_ok=True)
+
+        command = (
+            service.handle_transcript(result.text, "discord", result.confidence)
+            if result.text
+            else service.handle_transcript("", "discord", 0.0)
+        )
+        return {
+            "ok": True,
+            "user_id": meta.get("user_id"),
+            "started_at": meta.get("started_at"),
+            "ended_at": meta.get("ended_at"),
+            "transcript": result.text,
+            "confidence": result.confidence,
+            "language": result.language,
+            "command": command,
+        }
 
     @app.get("/api/discord/events")
     async def discord_events(after: int = 0) -> list[dict]:
@@ -129,6 +183,35 @@ def create_app(
             return
 
     return app
+
+
+async def _read_audio_request(request) -> tuple[bytes, dict[str, str]]:
+    content_type = request.headers.get("content-type", "")
+    meta: dict[str, str] = {}
+    if "multipart/form-data" in content_type:
+        form = await request.form()
+        for key in ["user_id", "started_at", "ended_at", "sample_rate", "channels"]:
+            value = form.get(key)
+            if value is not None:
+                meta[key] = str(value)
+        audio = form.get("audio")
+        if hasattr(audio, "read"):
+            return await audio.read(), meta
+        if isinstance(audio, bytes):
+            return audio, meta
+        return b"", meta
+
+    meta.update({key: value for key, value in request.query_params.items()})
+    return await request.body(), meta
+
+
+def _write_temp_audio(data: bytes) -> Path:
+    handle = tempfile.NamedTemporaryFile(prefix="gt7eng-stt-", suffix=".wav", delete=False)
+    try:
+        handle.write(data)
+        return Path(handle.name)
+    finally:
+        handle.close()
 
 
 def run_server(

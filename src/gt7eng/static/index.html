@@ -14,8 +14,11 @@
           <p id="status-line">Waiting for telemetry</p>
         </div>
         <div class="voice">
+          <span id="session-phase">unknown</span>
           <span id="voice-mode">quiet_driver</span>
           <span id="muted">live</span>
+          <span id="stt-status">stt off</span>
+          <span id="tts-status">tts</span>
         </div>
       </section>
 
@@ -63,6 +66,24 @@
             <div><dt>Speed</dt><dd id="speed">--</dd></div>
             <div><dt>RPM</dt><dd id="rpm">--</dd></div>
             <div><dt>Gear</dt><dd id="gear">--</dd></div>
+          </dl>
+        </article>
+
+        <article class="panel">
+          <h2>Tires</h2>
+          <dl>
+            <div><dt>Hottest</dt><dd id="tire-hot">--</dd></div>
+            <div><dt>Spread</dt><dd id="tire-spread">--</dd></div>
+            <div><dt>Wear Est.</dt><dd id="tire-wear">--</dd></div>
+          </dl>
+        </article>
+
+        <article class="panel">
+          <h2>Coaching</h2>
+          <dl>
+            <div><dt>Incident</dt><dd id="incident">--</dd></div>
+            <div><dt>Wheelspin</dt><dd id="wheelspin">0</dd></div>
+            <div><dt>Lockups</dt><dd id="lockups">0</dd></div>
           </dl>
         </article>
 

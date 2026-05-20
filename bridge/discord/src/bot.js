@@ -1,10 +1,12 @@
 import { ChannelType, Client, GatewayIntentBits } from "discord.js";
 import { EndBehaviorType, VoiceConnectionStatus, getVoiceConnection, joinVoiceChannel } from "@discordjs/voice";
+import prism from "prism-media";
 import {
   AudioQueue,
   createRadioCheckResource,
   createResourceFromAudioUrl,
-  createResourceFromFile
+  createResourceFromFile,
+  pcmToWavBuffer
 } from "./audio.js";
 import { PythonServiceClient } from "./pythonClient.js";
 import { BridgeState } from "./state.js";
@@ -23,13 +25,19 @@ export class DiscordVoiceBridge {
     this.python = new PythonServiceClient(config.python);
     this.audio = new AudioQueue({ logger });
     this.jobTimer = null;
+    this.receiveWatchdogTimer = null;
     this.receiveSubscriptions = new Map();
+    this.intentionalDisconnect = false;
   }
 
   async start() {
     this.client.once("ready", () => {
       this.logger.info("Discord bridge ready", { user: this.client.user?.tag });
       this.startJobPolling();
+      this.startReceiveWatchdog();
+      this.audio.onPlaybackChange((isPlaying) => {
+        if (isPlaying) this.stopReceiveStreams();
+      });
       if (this.config.audio.autoJoinOnReady && this.config.discord.voiceChannelId) {
         this.joinChannelId(this.config.discord.voiceChannelId).catch((error) => {
           this.state.lastError = error.message;
@@ -43,6 +51,7 @@ export class DiscordVoiceBridge {
 
   async stop() {
     if (this.jobTimer) clearInterval(this.jobTimer);
+    if (this.receiveWatchdogTimer) clearInterval(this.receiveWatchdogTimer);
     this.disconnectVoice();
     await this.client.destroy();
   }
@@ -76,6 +85,7 @@ export class DiscordVoiceBridge {
   }
 
   async resourceFactoryForJob(job) {
+    if (job.kind === "tone") return createRadioCheckResource({ durationMs: 140 });
     if (job.audio_url) return createResourceFromAudioUrl(job.audio_url);
     if (job.audio_file) return createResourceFromFile(job.audio_file);
     if (job.text) {
@@ -149,6 +159,7 @@ export class DiscordVoiceBridge {
         `voice: ${snapshot.voiceChannelId ? `connected (${snapshot.voiceChannelId})` : "disconnected"}`,
         `mode: ${snapshot.mode}`,
         `engineer_muted: ${snapshot.engineerMuted}`,
+        `stt_enabled: ${this.config.stt.enabled}`,
         `driver_audio_packets: ${snapshot.driverAudioPackets}`,
         `last_driver_audio_at: ${snapshot.lastDriverAudioAt ?? "none"}`,
         `python: ${pythonHealth}`,
@@ -218,6 +229,15 @@ export class DiscordVoiceBridge {
     });
     connection.on(VoiceConnectionStatus.Disconnected, () => {
       this.state.voiceChannelId = null;
+      if (!this.intentionalDisconnect) {
+        this.logger.warn("Voice disconnected; scheduling reconnect", { channelId: channel.id });
+        setTimeout(() => {
+          this.joinChannelId(channel.id).catch((error) => {
+            this.state.lastError = error.message;
+            this.logger.warn("Voice reconnect failed", { message: error.message });
+          });
+        }, 1500);
+      }
     });
     this.audio.subscribe(connection);
     this.state.voiceChannelId = channel.id;
@@ -225,16 +245,17 @@ export class DiscordVoiceBridge {
   }
 
   disconnectVoice() {
+    this.intentionalDisconnect = true;
     this.audio.clear();
-    for (const stream of this.receiveSubscriptions.values()) {
-      stream.destroy();
-    }
-    this.receiveSubscriptions.clear();
+    this.stopReceiveStreams();
     const guilds = this.client.guilds.cache.values();
     for (const guild of guilds) {
       getVoiceConnection(guild.id)?.destroy();
     }
     this.state.voiceChannelId = null;
+    setTimeout(() => {
+      this.intentionalDisconnect = false;
+    }, 500);
   }
 
   startReceiveMonitor(connection) {
@@ -246,7 +267,7 @@ export class DiscordVoiceBridge {
     }
 
     connection.receiver.speaking.on("start", (userId) => {
-      if (userId !== driverUserId || this.receiveSubscriptions.has(userId)) return;
+      if (userId !== driverUserId || this.receiveSubscriptions.has(userId) || this.audio.playing) return;
       const opusStream = connection.receiver.subscribe(userId, {
         end: {
           behavior: EndBehaviorType.AfterSilence,
@@ -258,6 +279,9 @@ export class DiscordVoiceBridge {
         this.state.driverAudioPackets += 1;
         this.state.lastDriverAudioAt = new Date().toISOString();
       });
+      if (this.config.stt.enabled) {
+        this.collectSpeechSegment(userId, opusStream);
+      }
       opusStream.once("end", () => {
         this.receiveSubscriptions.delete(userId);
       });
@@ -267,5 +291,81 @@ export class DiscordVoiceBridge {
         this.logger.warn("Driver audio receive stream failed", { message: error.message });
       });
     });
+  }
+
+  collectSpeechSegment(userId, opusStream) {
+    const startedAt = new Date();
+    const decoder = new prism.opus.Decoder({
+      rate: this.config.stt.sampleRate,
+      channels: this.config.stt.channels,
+      frameSize: 960
+    });
+    const chunks = [];
+    let pcmBytes = 0;
+    const maxTimer = setTimeout(() => {
+      opusStream.destroy();
+    }, this.config.stt.maxSegmentMs);
+
+    decoder.on("data", (chunk) => {
+      if (this.audio.playing) return;
+      chunks.push(chunk);
+      pcmBytes += chunk.length;
+    });
+    decoder.once("error", (error) => {
+      this.state.lastError = error.message;
+      this.logger.warn("Driver audio decode failed", { message: error.message });
+    });
+    opusStream.once("end", () => {
+      clearTimeout(maxTimer);
+      decoder.destroy();
+      const endedAt = new Date();
+      this.submitSpeechSegment({ userId, startedAt, endedAt, chunks, pcmBytes }).catch((error) => {
+        this.state.lastError = error.message;
+        this.logger.warn("Speech segment submit failed", { message: error.message });
+      });
+    });
+    opusStream.pipe(decoder);
+  }
+
+  async submitSpeechSegment({ userId, startedAt, endedAt, chunks, pcmBytes }) {
+    const bytesPerSecond = this.config.stt.sampleRate * this.config.stt.channels * 2;
+    const durationMs = (pcmBytes / bytesPerSecond) * 1000;
+    if (durationMs < this.config.stt.minSegmentMs) return;
+    const wav = pcmToWavBuffer(Buffer.concat(chunks), {
+      sampleRate: this.config.stt.sampleRate,
+      channels: this.config.stt.channels
+    });
+    const result = await this.python.postAudioSegment({
+      userId,
+      startedAt: startedAt.toISOString(),
+      endedAt: endedAt.toISOString(),
+      sampleRate: this.config.stt.sampleRate,
+      channels: this.config.stt.channels,
+      audio: wav
+    });
+    this.logger.info("Speech segment handled", {
+      transcript: result.transcript || "",
+      intent: result.command?.intent || "none",
+      confidence: result.command?.confidence ?? result.confidence ?? 0
+    });
+  }
+
+  stopReceiveStreams() {
+    for (const stream of this.receiveSubscriptions.values()) {
+      stream.destroy();
+    }
+    this.receiveSubscriptions.clear();
+  }
+
+  startReceiveWatchdog() {
+    if (this.receiveWatchdogTimer) clearInterval(this.receiveWatchdogTimer);
+    this.receiveWatchdogTimer = setInterval(() => {
+      if (!this.state.voiceChannelId || !this.config.discord.driverUserId || this.audio.playing) return;
+      if (!this.state.lastDriverAudioAt) return;
+      const age = Date.now() - Date.parse(this.state.lastDriverAudioAt);
+      if (age > this.config.audio.receiveWatchdogMs) {
+        this.logger.warn("No driver audio received recently", { ageMs: age });
+      }
+    }, Math.min(this.config.audio.receiveWatchdogMs, 30000));
   }
 }

@@ -94,6 +94,35 @@ class RaceEngineerService:
         self._queue_response_voice_job(response)
         return response
 
+    def handle_transcript(
+        self,
+        text: str,
+        source: str = "discord",
+        confidence: float = 1.0,
+    ) -> dict:
+        if confidence < self.config.stt.min_confidence:
+            result = VoiceResult(False, True, "low_confidence", "", confidence)
+            return self._command_response(text, result, source)
+
+        result = parse_voice_command(text, self.snapshot, self.config)
+        if result.ignored:
+            return self._command_response(text, result, source)
+        if result.handled:
+            self._apply_intent(result)
+            response = self._command_response(text, result, source)
+            self._queue_response_voice_job(response)
+            return response
+
+        if self.config.voice_mode == "quiet_driver":
+            ignored = VoiceResult(False, True, "unknown_quiet_driver", "", result.confidence)
+            return self._command_response(text, ignored, source)
+
+        answer = self.llm.ask(text, self.snapshot)
+        result = VoiceResult(True, False, "llm_question", answer, 0.5)
+        response = self._command_response(text, result, source)
+        self._queue_response_voice_job(response)
+        return response
+
     def alerts_after(self, after_id: int = 0, speak_only: bool = False) -> list[dict]:
         items = [
             alert
@@ -112,11 +141,21 @@ class RaceEngineerService:
                 "mode": self.config.voice_mode,
                 "wake_phrase": self.config.wake_phrase,
                 "muted": self._muted,
+                "stt_enabled": self.config.stt.enabled,
             },
             "config": {
                 "preset": self.config.preset,
                 "verbosity": self.config.verbosity,
                 "heartbeat_type": self.config.heartbeat_type,
+                "stt": {
+                    "enabled": self.config.stt.enabled,
+                    "engine": self.config.stt.engine,
+                    "model": self.config.stt.model,
+                },
+                "tts": {
+                    "engine": self.config.tts.engine,
+                    "radio_effects": self.config.tts.radio_effects,
+                },
             },
         }
 
@@ -183,6 +222,14 @@ class RaceEngineerService:
     def _queue_response_voice_job(self, response: dict) -> None:
         if response["source"] != "discord" or not response["speak"]:
             return
+        if self.config.tts.radio_effects:
+            self.voice_jobs.append(
+                VoiceJob(
+                    id=f"tone-{int(response['received_at'] * 1000)}",
+                    kind="tone",
+                    text="confirmation",
+                )
+            )
         self.voice_jobs.append(
             VoiceJob(
                 id=f"response-{int(response['received_at'] * 1000)}",

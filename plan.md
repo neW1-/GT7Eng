@@ -5,19 +5,29 @@ Build a local macOS GT7 race engineer that auto-discovers the PS5, reads GT7 tel
 
 The Discord bot is the race radio: it listens to your headset in a private Discord voice channel and speaks proactive updates plus answers back through the same channel. Text chat remains only for testing, debugging, and fallback.
 
+## Baruta-Inspired Improvement TODOs
+- [x] Add Discord STT/audio input from the configured driver user.
+- [x] Add optional local `faster-whisper` transcription.
+- [x] Add Piper/radio-style TTS while keeping macOS `say` as fallback.
+- [x] Add race lifecycle handling for loading/menu/paused/finished states.
+- [x] Normalize richer telemetry fields for motion, tire radius, and driving aids.
+- [x] Add lap delta, final-lap, tire-wear, incident, and driving-style monitors.
+- [x] Add HUD and `doctor` status for STT, TTS, session phase, and Discord receive health.
+
 ## Core Architecture
 - Python race-engineer service:
   - [x] Auto-discovers PS5 via `gt-telem`; manual IP is fallback.
   - [x] Receives GT7 UDP telemetry, normalizes it, and maintains race state.
   - [x] Runs deterministic monitors for fuel, pit timing, laps, position, tire/car health, and connection health.
-  - [ ] Add richer pace and incident monitors for lockups, wheelspin, spins, off-track, and corner loss.
+  - [x] Add richer pace and incident monitors for lockups, wheelspin, spins, and impact-like events.
+  - [ ] Add off-track and corner-loss monitors if GT7 exposes reliable signals.
   - [x] Provides local HTTP/WebSocket APIs for HUD, Discord bridge, replay, and testing.
 - Discord voice bridge:
   - [x] Node sidecar using `discord.js` + `@discordjs/voice`.
   - [x] Joins a configured private Discord voice channel.
   - [x] Monitors only the configured driver user’s audio stream.
-  - [ ] Decode Discord Opus audio to PCM and feed STT/VAD.
-  - [ ] Sends transcripts/intents to the Python service from live Discord speech.
+  - [x] Decode Discord Opus audio to PCM and feed Python STT/VAD.
+  - [x] Sends driver audio segments to Python, where transcripts/intents are handled.
   - [x] Plays proactive calls and answers back into Discord through the voice-job/TTS contract.
 - Web HUD:
   - [x] Browser dashboard for laptop, iPad, phone, or second monitor.
@@ -33,6 +43,7 @@ The Discord bot is the race radio: it listens to your headset in a private Disco
   - [x] Current position and total cars.
   - [x] Fuel level, fuel capacity, fuel used per lap, projected laps remaining.
   - [x] Tire temps, wheel speeds, suspension height, engine/oil/water data.
+  - [x] Motion, rotation, angular velocity, tire radius, TCS/ASM, handbrake, rev-limit, and in-gear flags.
   - [x] Track ID/name once detected.
 - Store session state:
   - [x] Rolling frame buffer.
@@ -64,9 +75,9 @@ The Discord bot is the race radio: it listens to your headset in a private Disco
 - [x] Discord is the v1 primary voice route.
 - Voice modes:
   - [x] `wake_phrase`: commands start with “Engineer” or a configured phrase in the command parser.
-  - [ ] Add live wake-word detection from Discord audio.
+  - [x] Add wake-phrase detection from live Discord STT transcripts.
   - [x] `quiet_driver`: no wake phrase, but only strict race command grammar is accepted in the command parser.
-  - [ ] Add live STT confidence thresholds for `quiet_driver` mode.
+  - [x] Add live STT confidence thresholds for `quiet_driver` mode.
 - Supported questions:
   - [x] “How’s my fuel?”
   - [x] “Do I need to pit?”
@@ -95,8 +106,9 @@ The Discord bot is the race radio: it listens to your headset in a private Disco
   - [x] `/radio_check`
 - Bot behavior:
   - [x] Filters/monitors to the configured driver user.
-  - [ ] Ignores its own TTS output during live STT.
-  - [ ] Reconnects on voice disconnect.
+  - [x] Pauses receive streams while TTS is playing to avoid self-transcription.
+  - [ ] Verify bot ignores its own TTS output during live Discord use.
+  - [x] Reconnects on voice disconnect.
   - [x] Logs recognized intent, confidence, and response text on the Python side.
   - [x] Does not store raw audio by default.
 
@@ -118,7 +130,8 @@ The Discord bot is the race radio: it listens to your headset in a private Disco
 ## HUD And CLI
 - CLI:
   - [x] `gt7eng doctor`: checks installed dependencies and optional PS5 discovery.
-  - [ ] Expand `doctor` to check UDP port bind, Discord config, LLM endpoint, TTS, and STT.
+  - [x] Expand `doctor` to check UDP port bind, Discord config, LLM config, TTS, and STT.
+  - [ ] Add live LLM endpoint smoke checks to `doctor`.
   - [x] `gt7eng run`: starts full service.
   - [x] `gt7eng replay <file>`: replays captured telemetry.
   - [x] `gt7eng capture`: records a session.
@@ -127,6 +140,7 @@ The Discord bot is the race radio: it listens to your headset in a private Disco
   - [x] Current lap, laps left, position, last/best lap.
   - [x] Fuel laps remaining, fuel margin, pit recommendation.
   - [x] Tire temps and car health via API; compact car panel in HUD.
+  - [x] Session phase, STT/TTS status, tire wear estimate, incident, and driving-style panels.
   - [x] Alert feed.
   - [x] Voice mode status.
   - [ ] Discord bot status in HUD.
@@ -138,9 +152,9 @@ The Discord bot is the race radio: it listens to your headset in a private Disco
 - [x] Race monitors: lap, position, fuel, pit advice, tire/car health, connection status.
 - [x] Web HUD: FastAPI/WebSocket backend and live browser dashboard.
 - [x] Discord bridge spike: bot joins voice, monitors driver audio, plays test TTS response.
-- [ ] Voice commands: VAD, STT, wake phrase mode, quiet-driver mode, Discord audio loop.
+- [x] Voice commands: VAD/STT endpoint, wake phrase mode, quiet-driver mode, Discord audio loop.
 - [x] LLM adapter: OpenAI-compatible race-state Q&A and summaries.
-- [ ] Integration hardening: reconnects, stale telemetry edge cases, bot errors, config validation, logging.
+- [x] Integration hardening: reconnects, stale telemetry edge cases, bot errors, config validation, logging.
 - [ ] Live GT7 validation: short race, endurance-style race, replay comparison, alert tuning.
 
 ## Test Plan
@@ -150,6 +164,7 @@ The Discord bot is the race radio: it listens to your headset in a private Disco
   - [x] Position-change detection.
   - [x] Fuel burn and pit recommendation.
   - [x] Alert cooldowns and verbosity.
+  - [x] Session phase, tire wear, incident, driving-style, STT transcript, and audio-status API behavior.
 - Replay tests:
   - [x] Synthetic race sessions.
   - [ ] Captured GT7 sessions once available.
@@ -159,6 +174,7 @@ The Discord bot is the race radio: it listens to your headset in a private Disco
   - [ ] Join/leave/reconnect live test.
   - [x] Config and Python client unit tests.
   - [x] Driver-user audio monitoring implementation.
+  - [x] PCM-to-WAV audio segment unit test.
   - [ ] Audio receive/playback smoke test in a real Discord channel.
   - [ ] Bot ignores its own speech.
 - LLM tests:
@@ -178,4 +194,4 @@ The Discord bot is the race radio: it listens to your headset in a private Disco
 - You usually drive quietly, so `quiet_driver` mode is useful, but `wake_phrase` remains available.
 - The app is GPL-compatible because `gt-telem` appears GPL-licensed.
 - Opponent gaps and nearby-car spotter calls are not promised unless GT7 exposes a reliable data source later.
-- After approval, this plan should be saved as `plan.md` at the repo root before implementation starts.
+- This plan is saved as `plan.md` at the repo root and updated as implementation progresses.

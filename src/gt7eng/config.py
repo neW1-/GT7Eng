@@ -10,6 +10,8 @@ AlertCategory = Literal[
     "lap",
     "position",
     "tires",
+    "incident",
+    "driving",
     "car",
     "system",
     "voice",
@@ -24,6 +26,8 @@ DEFAULT_VERBOSITY: dict[AlertCategory, Verbosity] = {
     "lap": "balanced",
     "position": "balanced",
     "tires": "critical",
+    "incident": "balanced",
+    "driving": "off",
     "car": "critical",
     "system": "critical",
     "voice": "balanced",
@@ -37,6 +41,7 @@ PRESETS: dict[str, dict[AlertCategory, Verbosity]] = {
         "pit": "critical",
         "lap": "balanced",
         "position": "detailed",
+        "incident": "balanced",
     },
     "endurance": {
         **DEFAULT_VERBOSITY,
@@ -45,6 +50,7 @@ PRESETS: dict[str, dict[AlertCategory, Verbosity]] = {
         "lap": "balanced",
         "position": "balanced",
         "tires": "balanced",
+        "incident": "balanced",
         "car": "balanced",
     },
     "practice": {
@@ -54,6 +60,8 @@ PRESETS: dict[str, dict[AlertCategory, Verbosity]] = {
         "lap": "detailed",
         "position": "off",
         "tires": "balanced",
+        "incident": "balanced",
+        "driving": "detailed",
     },
     "custom": DEFAULT_VERBOSITY,
 }
@@ -77,6 +85,24 @@ class DiscordConfig:
 
 
 @dataclass(slots=True)
+class STTConfig:
+    enabled: bool = False
+    engine: str = "faster-whisper"
+    model: str = "tiny.en"
+    device: str = "auto"
+    keep_audio: bool = False
+    min_confidence: float = 0.55
+
+
+@dataclass(slots=True)
+class TTSConfig:
+    engine: str = "auto"
+    piper_model: str = ""
+    radio_effects: bool = False
+    cache_dir: str = "/private/tmp/gt7eng-tts"
+
+
+@dataclass(slots=True)
 class AppConfig:
     preset: str = "endurance"
     ps_ip: str | None = None
@@ -91,6 +117,8 @@ class AppConfig:
     )
     llm: LLMConfig = field(default_factory=LLMConfig)
     discord: DiscordConfig = field(default_factory=DiscordConfig)
+    stt: STTConfig = field(default_factory=STTConfig)
+    tts: TTSConfig = field(default_factory=TTSConfig)
 
     @classmethod
     def from_env(cls) -> "AppConfig":
@@ -116,6 +144,20 @@ class AppConfig:
                 voice_channel_id=os.getenv("DISCORD_VOICE_CHANNEL_ID", ""),
                 guild_id=os.getenv("DISCORD_GUILD_ID", ""),
             ),
+            stt=STTConfig(
+                enabled=_bool(os.getenv("GT7ENG_STT_ENABLED"), False),
+                engine=os.getenv("GT7ENG_STT_ENGINE", "faster-whisper"),
+                model=os.getenv("GT7ENG_STT_MODEL", "tiny.en"),
+                device=os.getenv("GT7ENG_STT_DEVICE", "auto"),
+                keep_audio=_bool(os.getenv("GT7ENG_KEEP_AUDIO"), False),
+                min_confidence=float(os.getenv("GT7ENG_STT_MIN_CONFIDENCE", "0.55")),
+            ),
+            tts=TTSConfig(
+                engine=os.getenv("GT7ENG_TTS_ENGINE", "auto"),
+                piper_model=os.getenv("GT7ENG_PIPER_MODEL", ""),
+                radio_effects=_bool(os.getenv("GT7ENG_RADIO_EFFECTS"), False),
+                cache_dir=os.getenv("GT7ENG_TTS_CACHE_DIR", "/private/tmp/gt7eng-tts"),
+            ),
         )
 
     def set_preset(self, preset: str) -> None:
@@ -129,3 +171,9 @@ class AppConfig:
 
 def _voice_mode(value: str) -> VoiceMode:
     return "wake_phrase" if value == "wake_phrase" else "quiet_driver"
+
+
+def _bool(value: str | None, default: bool) -> bool:
+    if value is None or value == "":
+        return default
+    return value.strip().lower() in {"1", "true", "yes", "on"}

@@ -76,3 +76,76 @@ def test_spoken_alerts_queue_voice_jobs_once():
     jobs = service.next_voice_jobs(limit=10)
     assert any("P3" in job["text"] for job in jobs)
     assert service.next_voice_jobs(limit=10) == []
+
+
+def test_menu_phase_suppresses_race_alerts():
+    service = RaceEngineerService(AppConfig())
+    alerts = service.update_frame(
+        synthetic_frame(cars_on_track=False, current_lap=0, current_position=3)
+    )
+    assert alerts == []
+    assert service.snapshot.session_phase == "menu"
+
+
+def test_tire_wear_and_incident_alerts():
+    service = RaceEngineerService(AppConfig())
+    service.update_frame(
+        synthetic_frame(
+            timestamp=1.0,
+            speed_kph=110,
+            tire_radius={"fl": 0.33, "fr": 0.33, "rl": 0.33, "rr": 0.33},
+            wheel_rps={"fl": 20, "fr": 20, "rl": 20, "rr": 20},
+        )
+    )
+    alerts = service.update_frame(
+        synthetic_frame(
+            timestamp=2.0,
+            speed_kph=30,
+            tire_radius={"fl": 0.26, "fr": 0.33, "rl": 0.33, "rr": 0.33},
+            wheel_rps={"fl": 4, "fr": 4, "rl": 4, "rr": 4},
+        )
+    )
+
+    messages = [alert.message for alert in alerts]
+    assert any("Estimated tire wear" in message for message in messages)
+    assert any("Possible impact" in message for message in messages)
+
+
+def test_practice_driving_style_alerts_on_lap_end():
+    config = AppConfig(preset="practice")
+    config.set_preset("practice")
+    service = RaceEngineerService(config)
+    service.update_frame(
+        synthetic_frame(
+            timestamp=1.0,
+            current_lap=1,
+            throttle=90,
+            wheel_rps={"fl": 20, "fr": 20, "rl": 26, "rr": 26},
+        )
+    )
+    service.update_frame(
+        synthetic_frame(
+            timestamp=1.5,
+            current_lap=1,
+            throttle=0,
+            wheel_rps={"fl": 20, "fr": 20, "rl": 20, "rr": 20},
+        )
+    )
+    service.update_frame(
+        synthetic_frame(
+            timestamp=2.0,
+            current_lap=1,
+            throttle=90,
+            wheel_rps={"fl": 20, "fr": 20, "rl": 26, "rr": 26},
+        )
+    )
+    alerts = service.update_frame(
+        synthetic_frame(
+            timestamp=3.0,
+            current_lap=2,
+            last_lap_time_ms=98_000,
+            best_lap_time_ms=98_000,
+        )
+    )
+
+    assert any("Wheelspin" in alert.message for alert in alerts)

@@ -8,6 +8,7 @@ from typing import Any, Literal
 from .timefmt import format_lap_time
 
 AlertPriority = Literal["critical", "important", "info"]
+SessionPhase = Literal["unknown", "menu", "loading", "paused", "racing", "finished", "stale"]
 
 
 @dataclass(slots=True)
@@ -41,6 +42,38 @@ class WheelValues:
 
 
 @dataclass(slots=True)
+class VectorValues:
+    x: float | None = None
+    y: float | None = None
+    z: float | None = None
+
+    @classmethod
+    def from_obj(cls, value: Any) -> "VectorValues":
+        if value is None:
+            return cls()
+        if isinstance(value, (list, tuple)):
+            values = list(value) + [None, None, None]
+            return cls(
+                x=_num_or_none(values[0]),
+                y=_num_or_none(values[1]),
+                z=_num_or_none(values[2]),
+            )
+        return cls(
+            x=_num_or_none(getattr(value, "x", None)),
+            y=_num_or_none(getattr(value, "y", None)),
+            z=_num_or_none(getattr(value, "z", None)),
+        )
+
+
+@dataclass(slots=True)
+class DrivingStyleStats:
+    tcs_events: int = 0
+    asm_events: int = 0
+    wheelspin_events: int = 0
+    lockup_events: int = 0
+
+
+@dataclass(slots=True)
 class TelemetryFrame:
     timestamp: float = field(default_factory=time.time)
     source: str = "unknown"
@@ -52,6 +85,10 @@ class TelemetryFrame:
     throttle: int | None = None
     brake: int | None = None
     clutch_pedal: float | None = None
+    position: VectorValues = field(default_factory=VectorValues)
+    velocity: VectorValues = field(default_factory=VectorValues)
+    rotation: VectorValues = field(default_factory=VectorValues)
+    angular_velocity: VectorValues = field(default_factory=VectorValues)
     current_lap: int | None = None
     total_laps: int | None = None
     last_lap_time_ms: int | None = None
@@ -61,6 +98,7 @@ class TelemetryFrame:
     fuel_level: float | None = None
     fuel_capacity: float | None = None
     tire_temps: WheelValues = field(default_factory=WheelValues)
+    tire_radius: WheelValues = field(default_factory=WheelValues)
     wheel_rps: WheelValues = field(default_factory=WheelValues)
     suspension_height: WheelValues = field(default_factory=WheelValues)
     oil_temp: float | None = None
@@ -72,6 +110,11 @@ class TelemetryFrame:
     is_paused: bool = False
     is_loading: bool = False
     cars_on_track: bool = False
+    in_gear: bool = False
+    tcs_active: bool = False
+    asm_active: bool = False
+    hand_brake_active: bool = False
+    rev_limit: bool = False
     raw: dict[str, Any] = field(default_factory=dict)
 
     @classmethod
@@ -89,6 +132,10 @@ class TelemetryFrame:
         if current_position is not None and current_position <= 0:
             current_position = None
 
+        raw = getattr(telemetry, "as_dict", {}) or {}
+        if callable(raw):
+            raw = raw()
+
         return cls(
             source="gt-telem",
             packet_id=_int_or_none(getattr(telemetry, "packet_id", None)),
@@ -99,6 +146,12 @@ class TelemetryFrame:
             throttle=_int_or_none(getattr(telemetry, "throttle", None)),
             brake=_int_or_none(getattr(telemetry, "brake", None)),
             clutch_pedal=_num_or_none(getattr(telemetry, "clutch_pedal", None)),
+            position=VectorValues.from_obj(getattr(telemetry, "position", None)),
+            velocity=VectorValues.from_obj(getattr(telemetry, "velocity", None)),
+            rotation=VectorValues.from_obj(getattr(telemetry, "rotation", None)),
+            angular_velocity=VectorValues.from_obj(
+                getattr(telemetry, "angular_velocity", None)
+            ),
             current_lap=_int_or_none(getattr(telemetry, "current_lap", None)),
             total_laps=_int_or_none(getattr(telemetry, "total_laps", None)),
             last_lap_time_ms=_int_or_none(getattr(telemetry, "last_lap_time_ms", None)),
@@ -108,6 +161,7 @@ class TelemetryFrame:
             fuel_level=_num_or_none(getattr(telemetry, "fuel_level", None)),
             fuel_capacity=_num_or_none(getattr(telemetry, "fuel_capacity", None)),
             tire_temps=WheelValues.from_obj(getattr(telemetry, "tire_temp", None)),
+            tire_radius=WheelValues.from_obj(getattr(telemetry, "tire_radius", None)),
             wheel_rps=WheelValues.from_obj(getattr(telemetry, "wheel_rps", None)),
             suspension_height=WheelValues.from_obj(
                 getattr(telemetry, "suspension_height", None)
@@ -121,18 +175,29 @@ class TelemetryFrame:
             is_paused=bool(getattr(telemetry, "is_paused", False)),
             is_loading=bool(getattr(telemetry, "is_loading", False)),
             cars_on_track=bool(getattr(telemetry, "cars_on_track", False)),
-            raw=getattr(telemetry, "as_dict", {}) or {},
+            in_gear=bool(getattr(telemetry, "in_gear", False)),
+            tcs_active=bool(getattr(telemetry, "tcs_active", False)),
+            asm_active=bool(getattr(telemetry, "asm_active", False)),
+            hand_brake_active=bool(getattr(telemetry, "hand_brake_active", False)),
+            rev_limit=bool(getattr(telemetry, "rev_limit", False)),
+            raw=_json_safe(raw) if isinstance(raw, dict) else {},
         )
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "TelemetryFrame":
         values = dict(data)
-        for key in ["tire_temps", "wheel_rps", "suspension_height"]:
+        for key in ["tire_temps", "tire_radius", "wheel_rps", "suspension_height"]:
             raw = values.get(key)
             if isinstance(raw, dict):
                 values[key] = WheelValues(**raw)
             elif raw is None:
                 values[key] = WheelValues()
+        for key in ["position", "velocity", "rotation", "angular_velocity"]:
+            raw = values.get(key)
+            if isinstance(raw, dict):
+                values[key] = VectorValues(**raw)
+            elif raw is None:
+                values[key] = VectorValues()
         return cls(**values)
 
     def to_dict(self) -> dict[str, Any]:
@@ -159,6 +224,7 @@ class RaceSnapshot:
     connected: bool = False
     last_packet_age: float | None = None
     packet_rate_hz: float = 0.0
+    session_phase: SessionPhase = "unknown"
     current_lap: int | None = None
     total_laps: int | None = None
     laps_left: int | None = None
@@ -177,10 +243,18 @@ class RaceSnapshot:
     engine_rpm: float | None = None
     current_gear: int | None = None
     tire_temps: WheelValues = field(default_factory=WheelValues)
+    tire_radius: WheelValues = field(default_factory=WheelValues)
+    tire_wear_percent: WheelValues = field(default_factory=WheelValues)
     oil_temp: float | None = None
     water_temp: float | None = None
     track_id: int | None = None
     track_name: str | None = None
+    tcs_active: bool = False
+    asm_active: bool = False
+    hand_brake_active: bool = False
+    rev_limit: bool = False
+    incident_status: str | None = None
+    driving_style: DrivingStyleStats = field(default_factory=DrivingStyleStats)
     lap_history: list[LapRecord] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, Any]:
@@ -197,6 +271,8 @@ class StateUpdate:
     previous: RaceSnapshot | None
     completed_lap: LapRecord | None = None
     position_changed: tuple[int | None, int] | None = None
+    incident_detected: str | None = None
+    driving_event: str | None = None
 
 
 @dataclass(slots=True)
@@ -229,3 +305,15 @@ def _int_or_none(value: Any) -> int | None:
         return int(value)
     except (TypeError, ValueError):
         return None
+
+
+def _json_safe(value: Any) -> Any:
+    if isinstance(value, dict):
+        return {str(key): _json_safe(item) for key, item in value.items()}
+    if isinstance(value, tuple) and hasattr(value, "_fields"):
+        return [_json_safe(item) for item in value]
+    if isinstance(value, (list, tuple)):
+        return [_json_safe(item) for item in value]
+    if isinstance(value, (str, int, float, bool)) or value is None:
+        return value
+    return str(value)

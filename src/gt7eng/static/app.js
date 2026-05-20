@@ -1,7 +1,10 @@
 const fields = {
   status: document.querySelector("#status-line"),
+  sessionPhase: document.querySelector("#session-phase"),
   voiceMode: document.querySelector("#voice-mode"),
   muted: document.querySelector("#muted"),
+  sttStatus: document.querySelector("#stt-status"),
+  ttsStatus: document.querySelector("#tts-status"),
   position: document.querySelector("#position"),
   lap: document.querySelector("#lap"),
   lapsLeft: document.querySelector("#laps-left"),
@@ -15,6 +18,12 @@ const fields = {
   speed: document.querySelector("#speed"),
   rpm: document.querySelector("#rpm"),
   gear: document.querySelector("#gear"),
+  tireHot: document.querySelector("#tire-hot"),
+  tireSpread: document.querySelector("#tire-spread"),
+  tireWear: document.querySelector("#tire-wear"),
+  incident: document.querySelector("#incident"),
+  wheelspin: document.querySelector("#wheelspin"),
+  lockups: document.querySelector("#lockups"),
   alerts: document.querySelector("#alerts"),
   form: document.querySelector("#chat-form"),
   input: document.querySelector("#chat-input"),
@@ -26,16 +35,39 @@ function fmt(value, suffix = "", digits = 0) {
   return `${Number(value).toFixed(digits)}${suffix}`;
 }
 
+function wheelValues(values) {
+  return ["fl", "fr", "rl", "rr"]
+    .map((key) => values?.[key])
+    .filter((value) => value !== null && value !== undefined)
+    .map(Number);
+}
+
+function wheelMax(values) {
+  const present = wheelValues(values);
+  return present.length ? Math.max(...present) : null;
+}
+
+function wheelSpread(values) {
+  const present = wheelValues(values);
+  return present.length ? Math.max(...present) - Math.min(...present) : null;
+}
+
 function render(data) {
   const snap = data.snapshot || {};
   fields.status.textContent = snap.connected
-    ? `Telemetry live · ${fmt(snap.packet_rate_hz, " Hz", 1)}`
+    ? `Telemetry live · ${fmt(snap.packet_rate_hz, " Hz", 1)} · ${snap.session_phase || "unknown"}`
     : "Waiting for telemetry";
+  fields.sessionPhase.textContent = snap.session_phase || "unknown";
   fields.voiceMode.textContent = data.voice?.mode || "quiet_driver";
   fields.muted.textContent = data.voice?.muted ? "muted" : "live";
+  fields.sttStatus.textContent = data.audio?.stt?.enabled ? "stt on" : "stt off";
+  fields.ttsStatus.textContent = data.audio?.tts?.engine || data.config?.tts?.engine || "tts";
   fields.position.textContent = snap.current_position ? `P${snap.current_position}` : "--";
-  fields.lap.textContent =
-    snap.current_lap && snap.total_laps ? `${snap.current_lap}/${snap.total_laps}` : "--";
+  fields.lap.textContent = snap.current_lap
+    ? snap.total_laps
+      ? `${snap.current_lap}/${snap.total_laps}`
+      : `${snap.current_lap}`
+    : "--";
   fields.lapsLeft.textContent = snap.laps_left ?? "--";
   fields.lastLap.textContent = snap.last_lap_time || "--:--.---";
   fields.bestLap.textContent = snap.best_lap_time || "--:--.---";
@@ -47,6 +79,12 @@ function render(data) {
   fields.speed.textContent = fmt(snap.speed_kph, " kph", 0);
   fields.rpm.textContent = fmt(snap.engine_rpm, "", 0);
   fields.gear.textContent = snap.current_gear ?? "--";
+  fields.tireHot.textContent = fmt(wheelMax(snap.tire_temps), "°", 0);
+  fields.tireSpread.textContent = fmt(wheelSpread(snap.tire_temps), "°", 0);
+  fields.tireWear.textContent = fmt(wheelMax(snap.tire_wear_percent), "%", 0);
+  fields.incident.textContent = snap.incident_status || "--";
+  fields.wheelspin.textContent = snap.driving_style?.wheelspin_events ?? 0;
+  fields.lockups.textContent = snap.driving_style?.lockup_events ?? 0;
   fields.alerts.replaceChildren(
     ...(data.alerts || []).slice(-12).reverse().map((alert) => {
       const item = document.createElement("li");

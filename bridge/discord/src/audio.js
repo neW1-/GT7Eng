@@ -19,15 +19,18 @@ export class AudioQueue {
     this.player = createAudioPlayer();
     this.queue = [];
     this.playing = false;
+    this.playbackListeners = [];
 
     this.player.on("error", (error) => {
       this.logger.error("Audio player error", { message: error.message });
       this.playing = false;
+      this.emitPlayback(false);
       this.playNext();
     });
 
     this.player.on(AudioPlayerStatus.Idle, () => {
       this.playing = false;
+      this.emitPlayback(false);
       this.playNext();
     });
   }
@@ -46,12 +49,23 @@ export class AudioQueue {
     this.player.stop(true);
   }
 
+  onPlaybackChange(listener) {
+    this.playbackListeners.push(listener);
+  }
+
+  emitPlayback(isPlaying) {
+    for (const listener of this.playbackListeners) {
+      listener(isPlaying);
+    }
+  }
+
   async playNext() {
     if (this.playing || this.queue.length === 0) return;
     const factory = this.queue.shift();
     try {
       const resource = await factory();
       this.playing = true;
+      this.emitPlayback(true);
       this.player.play(resource);
     } catch (error) {
       this.logger.error("Unable to create audio resource", { message: error.message });
@@ -75,9 +89,9 @@ export function createResourceFromFile(path) {
   return () => createTranscodedResource(path);
 }
 
-export function createRadioCheckResource() {
+export function createRadioCheckResource({ frequency = 880, durationMs = 550 } = {}) {
   return () =>
-    createAudioResource(Readable.from(generateTonePcm()), {
+    createAudioResource(Readable.from(generateTonePcm({ frequency, durationMs })), {
       inputType: StreamType.Raw
     });
 }
@@ -96,6 +110,26 @@ function generateTonePcm({ frequency = 880, durationMs = 550, sampleRate = 48000
     buffer.writeInt16LE(sample, i * 4 + 2);
   }
   return buffer;
+}
+
+export function pcmToWavBuffer(pcm, { sampleRate = 48000, channels = 2, bitDepth = 16 } = {}) {
+  const blockAlign = (channels * bitDepth) / 8;
+  const byteRate = sampleRate * blockAlign;
+  const header = Buffer.alloc(44);
+  header.write("RIFF", 0);
+  header.writeUInt32LE(36 + pcm.length, 4);
+  header.write("WAVE", 8);
+  header.write("fmt ", 12);
+  header.writeUInt32LE(16, 16);
+  header.writeUInt16LE(1, 20);
+  header.writeUInt16LE(channels, 22);
+  header.writeUInt32LE(sampleRate, 24);
+  header.writeUInt32LE(byteRate, 28);
+  header.writeUInt16LE(blockAlign, 32);
+  header.writeUInt16LE(bitDepth, 34);
+  header.write("data", 36);
+  header.writeUInt32LE(pcm.length, 40);
+  return Buffer.concat([header, pcm]);
 }
 
 function createTranscodedResource(input) {

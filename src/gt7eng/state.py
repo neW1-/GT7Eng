@@ -4,7 +4,15 @@ import time
 from collections import deque
 
 from .config import AppConfig
-from .models import LapRecord, RaceSnapshot, StateUpdate, TelemetryFrame
+from .models import (
+    DrivingStyleStats,
+    LapRecord,
+    RaceSnapshot,
+    SessionPhase,
+    StateUpdate,
+    TelemetryFrame,
+    WheelValues,
+)
 
 
 class RaceState:
@@ -17,6 +25,15 @@ class RaceState:
         self._last_frame: TelemetryFrame | None = None
         self._first_frame_time: float | None = None
         self._packet_count = 0
+        self._saw_racing = False
+        self._non_racing_since: float | None = None
+        self._tire_radius_baseline: WheelValues | None = None
+        self._driving_style = DrivingStyleStats()
+        self._last_tcs_active = False
+        self._last_asm_active = False
+        self._wheelspin_active = False
+        self._lockup_active = False
+        self._last_incident: str | None = None
 
     @property
     def snapshot(self) -> RaceSnapshot:
@@ -27,15 +44,19 @@ class RaceState:
         self.frames.append(frame)
         self._packet_count += 1
         self._first_frame_time = self._first_frame_time or now
+        phase = self._session_phase(frame)
+        self._update_lifecycle(frame, phase)
 
         previous_snapshot = self._last_snapshot
         completed_lap = self._detect_completed_lap(frame)
         position_changed = self._detect_position_change(frame)
+        driving_event = self._update_driving_style(frame)
+        incident_detected = self._detect_incident(frame, phase)
 
         if frame.current_lap is not None and frame.fuel_level is not None:
             self._lap_start_fuel.setdefault(frame.current_lap, frame.fuel_level)
 
-        snapshot = self._build_snapshot(frame)
+        snapshot = self._build_snapshot(frame, phase, incident_detected)
         self._last_frame = frame
         self._last_snapshot = snapshot
         return StateUpdate(
@@ -43,6 +64,8 @@ class RaceState:
             previous=previous_snapshot,
             completed_lap=completed_lap,
             position_changed=position_changed,
+            incident_detected=incident_detected,
+            driving_event=driving_event,
         )
 
     def stale_snapshot(self) -> RaceSnapshot:
@@ -52,6 +75,8 @@ class RaceState:
         age = max(0.0, time.time() - self._last_frame.timestamp)
         snapshot.connected = age <= self.config.stale_seconds
         snapshot.last_packet_age = age
+        if not snapshot.connected:
+            snapshot.session_phase = "stale"
         return snapshot
 
     def _detect_completed_lap(self, frame: TelemetryFrame) -> LapRecord | None:
@@ -85,7 +110,12 @@ class RaceState:
             return None
         return last_position, frame.current_position
 
-    def _build_snapshot(self, frame: TelemetryFrame) -> RaceSnapshot:
+    def _build_snapshot(
+        self,
+        frame: TelemetryFrame,
+        phase: SessionPhase,
+        incident_detected: str | None,
+    ) -> RaceSnapshot:
         fuel_per_lap = self._fuel_per_lap()
         laps_left = self._laps_left(frame.current_lap, frame.total_laps)
         fuel_laps_remaining = None
@@ -99,10 +129,12 @@ class RaceState:
         average_lap = self._average_lap_time()
         packet_rate = self._packet_rate()
         age = max(0.0, time.time() - frame.timestamp)
+        tire_wear = self._tire_wear(frame)
         return RaceSnapshot(
             connected=age <= self.config.stale_seconds,
             last_packet_age=age,
             packet_rate_hz=packet_rate,
+            session_phase=phase,
             current_lap=frame.current_lap,
             total_laps=frame.total_laps,
             laps_left=laps_left,
@@ -121,10 +153,23 @@ class RaceState:
             engine_rpm=frame.engine_rpm,
             current_gear=frame.current_gear,
             tire_temps=frame.tire_temps,
+            tire_radius=frame.tire_radius,
+            tire_wear_percent=tire_wear,
             oil_temp=frame.oil_temp,
             water_temp=frame.water_temp,
             track_id=frame.track_id,
             track_name=frame.track_name,
+            tcs_active=frame.tcs_active,
+            asm_active=frame.asm_active,
+            hand_brake_active=frame.hand_brake_active,
+            rev_limit=frame.rev_limit,
+            incident_status=incident_detected or self._last_incident,
+            driving_style=DrivingStyleStats(
+                tcs_events=self._driving_style.tcs_events,
+                asm_events=self._driving_style.asm_events,
+                wheelspin_events=self._driving_style.wheelspin_events,
+                lockup_events=self._driving_style.lockup_events,
+            ),
             lap_history=list(self.lap_history[-20:]),
         )
 
@@ -153,6 +198,143 @@ class RaceState:
             return None
         return max(0, total_laps - current_lap + 1)
 
+    def _session_phase(self, frame: TelemetryFrame) -> SessionPhase:
+        if frame.is_loading:
+            return "loading"
+        if frame.is_paused:
+            return "paused"
+        if frame.total_laps and frame.current_lap and frame.current_lap > frame.total_laps:
+            return "finished"
+        if frame.cars_on_track:
+            return "racing"
+        if frame.current_lap is not None and frame.current_lap > 0:
+            return "racing"
+        return "menu"
+
+    def _update_lifecycle(self, frame: TelemetryFrame, phase: SessionPhase) -> None:
+        if phase == "racing":
+            self._saw_racing = True
+            self._non_racing_since = None
+            return
+
+        if not self._saw_racing or phase == "paused":
+            return
+
+        if phase not in {"menu", "loading", "finished"}:
+            return
+
+        self._non_racing_since = self._non_racing_since or frame.timestamp
+        if frame.timestamp - self._non_racing_since >= 2.5:
+            self._reset_race_session()
+
+    def _reset_race_session(self) -> None:
+        self.lap_history.clear()
+        self._lap_start_fuel.clear()
+        self._tire_radius_baseline = None
+        self._driving_style = DrivingStyleStats()
+        self._last_tcs_active = False
+        self._last_asm_active = False
+        self._wheelspin_active = False
+        self._lockup_active = False
+        self._last_incident = None
+        self._saw_racing = False
+        self._non_racing_since = None
+
+    def _tire_wear(self, frame: TelemetryFrame) -> WheelValues:
+        radii = frame.tire_radius
+        if self._tire_radius_baseline is None:
+            values = radii.values()
+            if values and all(value > 0 for value in values):
+                self._tire_radius_baseline = WheelValues(
+                    fl=radii.fl,
+                    fr=radii.fr,
+                    rl=radii.rl,
+                    rr=radii.rr,
+                )
+            return WheelValues()
+
+        def wear(base: float | None, current: float | None) -> float | None:
+            if base is None or current is None or base <= 0:
+                return None
+            return max(0.0, (base - current) / base * 100.0)
+
+        base = self._tire_radius_baseline
+        return WheelValues(
+            fl=wear(base.fl, radii.fl),
+            fr=wear(base.fr, radii.fr),
+            rl=wear(base.rl, radii.rl),
+            rr=wear(base.rr, radii.rr),
+        )
+
+    def _update_driving_style(self, frame: TelemetryFrame) -> str | None:
+        event = None
+        if frame.tcs_active and not self._last_tcs_active:
+            self._driving_style.tcs_events += 1
+            event = "tcs"
+        if frame.asm_active and not self._last_asm_active:
+            self._driving_style.asm_events += 1
+            event = event or "asm"
+
+        wheelspin = self._likely_wheelspin(frame)
+        if wheelspin and not self._wheelspin_active:
+            self._driving_style.wheelspin_events += 1
+            event = event or "wheelspin"
+
+        lockup = self._likely_lockup(frame)
+        if lockup and not self._lockup_active:
+            self._driving_style.lockup_events += 1
+            event = event or "lockup"
+
+        self._last_tcs_active = frame.tcs_active
+        self._last_asm_active = frame.asm_active
+        self._wheelspin_active = wheelspin
+        self._lockup_active = lockup
+        return event
+
+    def _likely_wheelspin(self, frame: TelemetryFrame) -> bool:
+        if frame.throttle is None or frame.throttle < 60:
+            return False
+        if frame.speed_kph is None or frame.speed_kph < 25:
+            return False
+        front = _avg([frame.wheel_rps.fl, frame.wheel_rps.fr])
+        rear = _avg([frame.wheel_rps.rl, frame.wheel_rps.rr])
+        if front is None or rear is None or front <= 0:
+            return False
+        return rear / front >= 1.15
+
+    def _likely_lockup(self, frame: TelemetryFrame) -> bool:
+        if frame.brake is None or frame.brake < 150:
+            return False
+        if frame.speed_kph is None or frame.speed_kph < 35:
+            return False
+        wheels = frame.wheel_rps.values()
+        if len(wheels) < 4:
+            return False
+        avg = sum(wheels) / len(wheels)
+        if avg <= 0:
+            return False
+        return min(wheels) < avg * 0.7
+
+    def _detect_incident(self, frame: TelemetryFrame, phase: SessionPhase) -> str | None:
+        last = self._last_frame
+        if last is None or phase != "racing":
+            return None
+        speed = frame.speed_kph or 0.0
+        last_speed = last.speed_kph or 0.0
+        speed_drop = last_speed - speed
+        yaw_rate = abs(frame.angular_velocity.z or 0.0)
+        roll_rate = abs(frame.angular_velocity.x or 0.0)
+
+        incident = None
+        if last_speed >= 80 and speed_drop >= 55 and speed <= 40:
+            incident = "crash"
+        elif speed >= 25 and (yaw_rate >= 2.5 or roll_rate >= 2.5):
+            incident = "spin"
+
+        if incident:
+            self._last_incident = incident
+        return incident
+
     def _pit_recommendation(self, fuel_margin: float | None) -> str:
         if fuel_margin is None:
             return "Need one completed lap for fuel projection."
@@ -167,3 +349,10 @@ class RaceState:
             return 0.0
         elapsed = max(0.001, time.time() - self._first_frame_time)
         return self._packet_count / elapsed
+
+
+def _avg(values: list[float | None]) -> float | None:
+    present = [value for value in values if value is not None]
+    if not present:
+        return None
+    return sum(present) / len(present)

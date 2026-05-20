@@ -49,6 +49,19 @@ export class PythonServiceClient {
     });
   }
 
+  async postAudioSegment({ userId, startedAt, endedAt, sampleRate, channels, audio }) {
+    const form = new FormData();
+    form.set("user_id", userId);
+    form.set("started_at", startedAt);
+    form.set("ended_at", endedAt);
+    form.set("sample_rate", String(sampleRate));
+    form.set("channels", String(channels));
+    form.set("audio", new Blob([audio], { type: "audio/wav" }), "driver.wav");
+    const response = await this.requestForm("/api/discord/audio", form);
+    if (!response.ok) throw new Error(`Python audio post failed with HTTP ${response.status}`);
+    return response.json();
+  }
+
   async request(path, { method, body, timeoutMs } = {}) {
     if (!this.fetch) throw new Error("global fetch is not available; use Node 20 or newer");
     const controller = new AbortController();
@@ -59,6 +72,24 @@ export class PythonServiceClient {
         signal: controller.signal,
         headers: this.headers(body),
         body: body ? JSON.stringify(body) : undefined
+      });
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
+  async requestForm(path, form, timeoutMs = 20000) {
+    if (!this.fetch) throw new Error("global fetch is not available; use Node 20 or newer");
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    const headers = {};
+    if (this.token) headers.authorization = `Bearer ${this.token}`;
+    try {
+      return await this.fetch(`${this.baseUrl}${path}`, {
+        method: "POST",
+        signal: controller.signal,
+        headers,
+        body: form
       });
     } finally {
       clearTimeout(timer);
