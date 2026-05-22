@@ -20,6 +20,8 @@ Local Gran Turismo 7 race engineer for macOS. It auto-discovers the PS5 via `gt-
 - [x] Live Discord driver-audio receive, `tiny.en` STT, and spoken position Q&A round trip.
 - [x] Treat GT7 fuel as percent-based telemetry, not liters.
 - [x] Coalesce rapid position changes into one net alert before speaking.
+- [x] Timed/endurance race mode avoids “lap X of 0” and supports time-remaining voice responses.
+- [x] Timed/endurance countdown freezes while GT7 telemetry reports the session is paused.
 
 ## Todo
 
@@ -72,6 +74,15 @@ Fuel note: GT7 fuel is treated as percentage. `fuel_level=100.0` means a full ta
 
 Position note: rapid position changes are coalesced before being shown/spoken. By default, the engineer waits `1.5s` for the position to settle, so a quick move from P13 to P10 becomes “Gained 3 places, now P10.” Tune with `GT7ENG_POSITION_COALESCE_SECONDS`.
 
+Timed race note: GT7 reports `total_laps=0` for timed/endurance events. The engineer treats that as timed race mode and says `Lap X` instead of `Lap X of 0`. Set the event length with `GT7ENG_RACE_DURATION_MINUTES` so the engineer can compute time remaining from its race-session clock, for example:
+
+```bash
+GT7ENG_RACE_DURATION_MINUTES=30 gt7eng run --host 0.0.0.0 --port 8765
+```
+
+In timed race mode, the HUD Race card shows race duration and time left. “How many laps?” returns lap plus time remaining, and “how much time left?” returns the remaining race time. The timer only counts while the session phase is `racing`; it freezes while GT7 reports `paused`.
+You can also set the duration at runtime by voice or typed chat, for example: “set race duration to 30 minutes.”
+
 ## Replay
 
 ```bash
@@ -118,6 +129,7 @@ Live validation notes from 2026-05-22:
 - Driver headset audio incremented `driver_audio_packets`.
 - `faster-whisper` `tiny.en` on CPU transcribed “What position am I?” and the deterministic `position` intent played a spoken answer.
 - `GT7ENG_STT_MIN_CONFIDENCE=0.45` worked better than the default `0.55` for this Discord headset test.
+- Timed/endurance race testing confirmed `total_laps=0` is handled as timed mode, the HUD shows duration/time left, and the countdown freezes while paused.
 
 ## Audio Configuration
 

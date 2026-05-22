@@ -34,6 +34,10 @@ class RaceState:
         self._wheelspin_active = False
         self._lockup_active = False
         self._last_incident: str | None = None
+        self._timer_mode = "unknown"
+        self._timed_race_started_at: float | None = None
+        self._timed_race_elapsed_ms = 0
+        self._timed_race_last_sample_at: float | None = None
 
     @property
     def snapshot(self) -> RaceSnapshot:
@@ -120,7 +124,14 @@ class RaceState:
         incident_detected: str | None,
     ) -> RaceSnapshot:
         fuel_per_lap = self._fuel_per_lap()
-        laps_left = self._laps_left(frame.current_lap, frame.total_laps)
+        total_laps = _total_laps(frame.total_laps)
+        race_mode = self._race_mode(frame, phase)
+        laps_left = self._laps_left(frame.current_lap, total_laps)
+        race_elapsed_ms = self._race_elapsed_ms(frame, race_mode, phase)
+        race_duration_ms = self._race_duration_ms(race_mode)
+        race_time_remaining_ms = self._race_time_remaining_ms(
+            race_mode, race_elapsed_ms, race_duration_ms
+        )
         fuel_percent = _fuel_percent(frame.fuel_level)
         fuel_laps_remaining = None
         fuel_margin = None
@@ -140,8 +151,13 @@ class RaceState:
             packet_rate_hz=packet_rate,
             session_phase=phase,
             current_lap=frame.current_lap,
-            total_laps=frame.total_laps,
+            total_laps=total_laps,
             laps_left=laps_left,
+            race_mode=race_mode,
+            timer_mode=self._timer_mode,  # type: ignore[arg-type]
+            race_elapsed_time_ms=race_elapsed_ms,
+            race_duration_ms=race_duration_ms,
+            race_time_remaining_ms=race_time_remaining_ms,
             current_position=frame.current_position,
             total_cars=frame.total_cars,
             last_lap_time_ms=frame.last_lap_time_ms,
@@ -198,9 +214,50 @@ class RaceState:
         return int(sum(values) / len(values))
 
     def _laps_left(self, current_lap: int | None, total_laps: int | None) -> int | None:
-        if current_lap is None or total_laps is None or total_laps <= 0:
+        if current_lap is None or total_laps is None:
             return None
         return max(0, total_laps - current_lap + 1)
+
+    def _race_mode(self, frame: TelemetryFrame, phase: SessionPhase) -> str:
+        if _total_laps(frame.total_laps) is not None:
+            return "lap"
+        if frame.total_laps == 0 and (
+            frame.current_lap is not None and frame.current_lap > 0
+            or phase in {"racing", "paused", "finished"}
+        ):
+            return "timed"
+        return "unknown"
+
+    def _race_elapsed_ms(
+        self, frame: TelemetryFrame, race_mode: str, phase: SessionPhase
+    ) -> int | None:
+        if race_mode != "timed":
+            return None
+        if self._timed_race_started_at is None:
+            self._timed_race_started_at = frame.timestamp
+        if self._timed_race_last_sample_at is not None and phase == "racing":
+            elapsed_ms = max(0.0, frame.timestamp - self._timed_race_last_sample_at) * 1000
+            self._timed_race_elapsed_ms += int(elapsed_ms)
+        self._timed_race_last_sample_at = frame.timestamp
+        self._timer_mode = "app_elapsed"
+        return self._timed_race_elapsed_ms
+
+    def _race_duration_ms(self, race_mode: str) -> int | None:
+        if race_mode != "timed" or self.config.race_duration_minutes is None:
+            return None
+        return int(self.config.race_duration_minutes * 60_000)
+
+    def _race_time_remaining_ms(
+        self,
+        race_mode: str,
+        race_elapsed_ms: int | None,
+        race_duration_ms: int | None,
+    ) -> int | None:
+        if race_mode != "timed":
+            return None
+        if race_elapsed_ms is None or race_duration_ms is None:
+            return None
+        return max(0, race_duration_ms - race_elapsed_ms)
 
     def _session_phase(self, frame: TelemetryFrame) -> SessionPhase:
         if frame.is_loading:
@@ -241,6 +298,10 @@ class RaceState:
         self._wheelspin_active = False
         self._lockup_active = False
         self._last_incident = None
+        self._timer_mode = "unknown"
+        self._timed_race_started_at = None
+        self._timed_race_elapsed_ms = 0
+        self._timed_race_last_sample_at = None
         self._saw_racing = False
         self._non_racing_since = None
 
@@ -366,3 +427,9 @@ def _fuel_percent(value: float | None) -> float | None:
     if value is None:
         return None
     return max(0.0, min(100.0, value))
+
+
+def _total_laps(value: int | None) -> int | None:
+    if value is None or value <= 0:
+        return None
+    return value

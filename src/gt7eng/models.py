@@ -5,10 +5,12 @@ import time
 from dataclasses import asdict, dataclass, field
 from typing import Any, Literal
 
-from .timefmt import format_lap_time
+from .timefmt import format_duration, format_lap_time
 
 AlertPriority = Literal["critical", "important", "info"]
 SessionPhase = Literal["unknown", "menu", "loading", "paused", "racing", "finished", "stale"]
+RaceMode = Literal["unknown", "lap", "timed"]
+TimerMode = Literal["unknown", "app_elapsed"]
 
 
 @dataclass(slots=True)
@@ -91,6 +93,7 @@ class TelemetryFrame:
     angular_velocity: VectorValues = field(default_factory=VectorValues)
     current_lap: int | None = None
     total_laps: int | None = None
+    time_of_day_ms: int | None = None
     last_lap_time_ms: int | None = None
     best_lap_time_ms: int | None = None
     current_position: int | None = None
@@ -154,6 +157,7 @@ class TelemetryFrame:
             ),
             current_lap=_int_or_none(getattr(telemetry, "current_lap", None)),
             total_laps=_int_or_none(getattr(telemetry, "total_laps", None)),
+            time_of_day_ms=_int_or_none(getattr(telemetry, "time_of_day_ms", None)),
             last_lap_time_ms=_int_or_none(getattr(telemetry, "last_lap_time_ms", None)),
             best_lap_time_ms=_int_or_none(getattr(telemetry, "best_lap_time_ms", None)),
             current_position=current_position,
@@ -228,6 +232,11 @@ class RaceSnapshot:
     current_lap: int | None = None
     total_laps: int | None = None
     laps_left: int | None = None
+    race_mode: RaceMode = "unknown"
+    timer_mode: TimerMode = "unknown"
+    race_elapsed_time_ms: int | None = None
+    race_duration_ms: int | None = None
+    race_time_remaining_ms: int | None = None
     current_position: int | None = None
     total_cars: int | None = None
     last_lap_time_ms: int | None = None
@@ -263,6 +272,9 @@ class RaceSnapshot:
         data["last_lap_time"] = format_lap_time(self.last_lap_time_ms)
         data["best_lap_time"] = format_lap_time(self.best_lap_time_ms)
         data["average_lap_time"] = format_lap_time(self.average_lap_time_ms)
+        data["race_elapsed_time"] = format_duration(self.race_elapsed_time_ms)
+        data["race_duration"] = format_duration(self.race_duration_ms)
+        data["race_time_remaining"] = format_duration(self.race_time_remaining_ms)
         data["fuel_level_percent"] = self.fuel_level
         data["fuel_per_lap_percent"] = self.fuel_per_lap
         return data

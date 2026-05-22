@@ -9,6 +9,35 @@ def format_lap_time(milliseconds: int | None) -> str:
     return f"{minutes}:{seconds:02}.{millis:03}"
 
 
+def format_duration(milliseconds: int | None) -> str:
+    if milliseconds is None or milliseconds < 0:
+        return "--:--"
+    total_seconds = int(milliseconds // 1000)
+    hours, remainder = divmod(total_seconds, 3600)
+    minutes, seconds = divmod(remainder, 60)
+    if hours:
+        return f"{hours}:{minutes:02}:{seconds:02}"
+    return f"{minutes}:{seconds:02}"
+
+
+def format_duration_words(milliseconds: int | None) -> str:
+    if milliseconds is None or milliseconds < 0:
+        return "time unavailable"
+    total_seconds = int(round(milliseconds / 1000))
+    hours, remainder = divmod(total_seconds, 3600)
+    minutes, seconds = divmod(remainder, 60)
+    parts: list[str] = []
+    if hours:
+        parts.append(plural(hours, "hour"))
+    if minutes:
+        parts.append(plural(minutes, "minute"))
+    if not parts and seconds:
+        parts.append(plural(seconds, "second"))
+    if not parts:
+        return "less than 1 second"
+    return " ".join(parts)
+
+
 def format_delta(milliseconds: int | None) -> str:
     if milliseconds is None:
         return "+0.000"

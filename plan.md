@@ -36,6 +36,7 @@ The Discord bot is the race radio: it listens to your headset in a private Disco
 - Web HUD:
   - [x] Browser dashboard for laptop, iPad, phone, or second monitor.
   - [x] Shows live telemetry, fuel strategy, lap history, alerts, and voice status.
+  - [x] Shows timed race duration and time left for endurance debugging.
   - [ ] Add HUD settings for verbosity presets and voice mode.
   - [x] Includes typed chat only for test/debug use.
 
@@ -44,6 +45,8 @@ The Discord bot is the race radio: it listens to your headset in a private Disco
 - Normalize key GT7 fields:
   - [x] Speed, RPM, gear, throttle, brake, clutch.
   - [x] Current lap, total laps, laps left, last lap, best lap.
+  - [x] Timed race mode when GT7 reports `total_laps=0`, with lap plus time remaining.
+  - [x] Timed race clock freezes while GT7 telemetry reports the session is paused.
   - [x] Current position and total cars.
   - [x] Fuel level, fuel capacity, fuel used per lap, projected laps remaining.
   - [x] Treat GT7 fuel as percent-based telemetry, not liters.
@@ -63,6 +66,8 @@ The Discord bot is the race radio: it listens to your headset in a private Disco
   - [x] Position changes: “P3.” / “Lost one, now P4.”
   - [x] Coalesce rapid position changes into one net alert, e.g. “Gained 3 places, now P10.”
   - [x] Lap-end summaries: lap time, delta to best, laps left.
+  - [x] Timed/endurance race updates: lap plus time remaining instead of “lap X of 0.”
+  - [x] Timed/endurance countdown uses active racing time and stops while paused.
   - [x] Fuel: laps remaining, fuel margin, fuel critical.
   - [ ] Fuel-save target calls.
   - [x] Pit advice: “Box this lap,” “Fuel to the end is safe.”
@@ -88,6 +93,8 @@ The Discord bot is the race radio: it listens to your headset in a private Disco
   - [x] “How’s my fuel?”
   - [x] “Do I need to pit?”
   - [x] “How many laps left?”
+  - [x] “How much time left?”
+  - [x] “Set race duration to 30 minutes.”
   - [x] “What was my last lap?”
   - [x] “What’s my best lap?”
   - [x] “What position am I?”

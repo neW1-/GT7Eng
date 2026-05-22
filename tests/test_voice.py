@@ -31,6 +31,69 @@ def test_wake_phrase_handles_with_phrase():
     assert "P5" in result["response"]
 
 
+def test_timed_race_lap_and_time_commands():
+    config = AppConfig(race_duration_minutes=30)
+    service = RaceEngineerService(config)
+    service.update_frame(
+        synthetic_frame(
+            timestamp=1.0,
+            current_lap=1,
+            total_laps=0,
+            time_of_day_ms=18 * 60 * 60_000,
+        )
+    )
+    service.update_frame(
+        synthetic_frame(
+            timestamp=301.0,
+            current_lap=1,
+            total_laps=0,
+            time_of_day_ms=18 * 60 * 60_000 + 5 * 60_000,
+        )
+    )
+
+    laps = service.handle_command("how many laps")
+    assert laps["intent"] == "laps_left"
+    assert "Lap 1" in laps["response"]
+    assert "25 minutes remaining" in laps["response"]
+    assert "of 0" not in laps["response"]
+
+    time_left = service.handle_command("how much time left")
+    assert time_left["intent"] == "time_remaining"
+    assert "25 minutes remaining" in time_left["response"]
+
+    update = service.handle_command("give me an update")
+    assert "lap 1" in update["response"]
+    assert "25 minutes remaining" in update["response"]
+    assert "of 0" not in update["response"]
+
+
+def test_timed_race_lap_zero_uses_timed_race_phrase():
+    service = RaceEngineerService(AppConfig(race_duration_minutes=40))
+    service.update_frame(
+        synthetic_frame(
+            timestamp=1.0,
+            current_lap=0,
+            total_laps=0,
+            speed_kph=80.0,
+            cars_on_track=True,
+        )
+    )
+
+    laps = service.handle_command("how many laps")
+    assert laps["intent"] == "laps_left"
+    assert "Timed race" in laps["response"]
+    assert "Lap 0" not in laps["response"]
+    assert "40 minutes remaining" in laps["response"]
+
+
+def test_race_duration_can_be_set_by_command():
+    service = RaceEngineerService(AppConfig())
+    result = service.handle_command("set race duration to 30 minutes")
+    assert result["intent"] == "set_race_duration"
+    assert service.config.race_duration_minutes == 30
+    assert "30 minutes" in result["response"]
+
+
 def test_quiet_driver_unknown_transcript_does_not_call_llm():
     service = RaceEngineerService(AppConfig())
 

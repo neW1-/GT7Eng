@@ -44,7 +44,7 @@ def test_lap_position_and_fuel_projection_alerts():
     assert any("Gained 1 place" in message for message in messages)
     assert any("Lap 1" in message for message in messages)
 
-    snapshot = service.snapshot
+    snapshot = service.state.snapshot
     assert snapshot.laps_left == 2
     assert snapshot.fuel_per_lap == 10.0
     assert snapshot.fuel_laps_remaining == 2.0
@@ -92,6 +92,136 @@ def test_fuel_threshold_uses_level_as_percentage_not_capacity_ratio():
     assert not any("Fuel below" in alert.message for alert in alerts)
     assert service.snapshot.fuel_level == 60.0
     assert service.snapshot.fuel_capacity == 100.0
+
+
+def test_timed_race_uses_time_remaining_instead_of_lap_zero():
+    config = AppConfig(race_duration_minutes=30)
+    service = RaceEngineerService(config)
+    service.update_frame(
+        synthetic_frame(
+            timestamp=1.0,
+            current_lap=1,
+            total_laps=0,
+            time_of_day_ms=18 * 60 * 60_000,
+        )
+    )
+    service.update_frame(
+        synthetic_frame(
+            timestamp=301.0,
+            current_lap=1,
+            total_laps=0,
+            time_of_day_ms=18 * 60 * 60_000 + 5 * 60_000,
+        )
+    )
+
+    snapshot = service.state.snapshot
+    assert snapshot.race_mode == "timed"
+    assert snapshot.total_laps is None
+    assert snapshot.laps_left is None
+    assert snapshot.race_elapsed_time_ms == 300_000
+    assert snapshot.race_time_remaining_ms == 25 * 60_000
+    assert snapshot.to_dict()["race_duration"] == "30:00"
+    assert snapshot.to_dict()["race_time_remaining"] == "25:00"
+
+
+def test_timed_race_ignores_time_of_day_jumps_for_remaining_time():
+    service = RaceEngineerService(AppConfig(race_duration_minutes=30))
+    service.update_frame(
+        synthetic_frame(
+            timestamp=1.0,
+            current_lap=1,
+            total_laps=0,
+            time_of_day_ms=18 * 60 * 60_000,
+        )
+    )
+    service.update_frame(
+        synthetic_frame(
+            timestamp=2.0,
+            current_lap=1,
+            total_laps=0,
+            time_of_day_ms=17 * 60 * 60_000,
+        )
+    )
+
+    snapshot = service.state.snapshot
+    assert snapshot.timer_mode == "app_elapsed"
+    assert snapshot.race_elapsed_time_ms == 1000
+    assert snapshot.race_time_remaining_ms == 30 * 60_000 - 1000
+
+
+def test_timed_race_starts_when_gt7_reports_lap_zero_on_track():
+    service = RaceEngineerService(AppConfig(race_duration_minutes=40))
+    service.update_frame(
+        synthetic_frame(
+            timestamp=1.0,
+            current_lap=0,
+            total_laps=0,
+            speed_kph=80.0,
+            cars_on_track=True,
+        )
+    )
+    service.update_frame(
+        synthetic_frame(
+            timestamp=61.0,
+            current_lap=0,
+            total_laps=0,
+            speed_kph=90.0,
+            cars_on_track=True,
+        )
+    )
+
+    snapshot = service.state.snapshot
+    assert snapshot.race_mode == "timed"
+    assert snapshot.race_elapsed_time_ms == 60_000
+    assert snapshot.race_time_remaining_ms == 39 * 60_000
+
+
+def test_timed_race_timer_freezes_while_paused():
+    service = RaceEngineerService(AppConfig(race_duration_minutes=30))
+    service.update_frame(
+        synthetic_frame(
+            timestamp=0.0,
+            current_lap=1,
+            total_laps=0,
+            cars_on_track=True,
+        )
+    )
+    service.update_frame(
+        synthetic_frame(
+            timestamp=60.0,
+            current_lap=1,
+            total_laps=0,
+            cars_on_track=True,
+        )
+    )
+    service.update_frame(
+        synthetic_frame(
+            timestamp=300.0,
+            current_lap=1,
+            total_laps=0,
+            cars_on_track=True,
+            is_paused=True,
+        )
+    )
+
+    snapshot = service.state.snapshot
+    assert snapshot.session_phase == "paused"
+    assert snapshot.race_elapsed_time_ms == 60_000
+    assert snapshot.race_time_remaining_ms == 29 * 60_000
+
+    service.update_frame(
+        synthetic_frame(
+            timestamp=301.0,
+            current_lap=1,
+            total_laps=0,
+            cars_on_track=True,
+        )
+    )
+
+    snapshot = service.state.snapshot
+    assert snapshot.session_phase == "racing"
+    assert snapshot.race_elapsed_time_ms == 61_000
+    assert snapshot.race_time_remaining_ms == 30 * 60_000 - 61_000
 
 
 def test_tire_and_car_health_alerts():

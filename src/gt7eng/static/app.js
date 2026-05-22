@@ -7,7 +7,9 @@ const fields = {
   ttsStatus: document.querySelector("#tts-status"),
   position: document.querySelector("#position"),
   lap: document.querySelector("#lap"),
-  lapsLeft: document.querySelector("#laps-left"),
+  raceDuration: document.querySelector("#race-duration"),
+  remainingLabel: document.querySelector("#remaining-label"),
+  raceRemaining: document.querySelector("#race-remaining"),
   lastLap: document.querySelector("#last-lap"),
   bestLap: document.querySelector("#best-lap"),
   averageLap: document.querySelector("#average-lap"),
@@ -33,6 +35,19 @@ const fields = {
 function fmt(value, suffix = "", digits = 0) {
   if (value === null || value === undefined) return "--";
   return `${Number(value).toFixed(digits)}${suffix}`;
+}
+
+function durationFromMinutes(value) {
+  if (value === null || value === undefined || value === "") return "--:--";
+  const totalSeconds = Math.max(0, Math.round(Number(value) * 60));
+  if (!Number.isFinite(totalSeconds)) return "--:--";
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+  if (hours) {
+    return `${hours}:${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
+  }
+  return `${minutes}:${String(seconds).padStart(2, "0")}`;
 }
 
 function wheelValues(values) {
@@ -68,7 +83,17 @@ function render(data) {
       ? `${snap.current_lap}/${snap.total_laps}`
       : `${snap.current_lap}`
     : "--";
-  fields.lapsLeft.textContent = snap.laps_left ?? "--";
+  fields.raceDuration.textContent =
+    snap.race_duration && snap.race_duration !== "--:--"
+      ? snap.race_duration
+      : durationFromMinutes(data.config?.race_duration_minutes);
+  if (snap.race_mode === "timed") {
+    fields.remainingLabel.textContent = "Time Left";
+    fields.raceRemaining.textContent = snap.race_time_remaining || "--:--";
+  } else {
+    fields.remainingLabel.textContent = "Laps Left";
+    fields.raceRemaining.textContent = snap.laps_left ?? "--";
+  }
   fields.lastLap.textContent = snap.last_lap_time || "--:--.---";
   fields.bestLap.textContent = snap.best_lap_time || "--:--.---";
   fields.averageLap.textContent = snap.average_lap_time || "--:--.---";
@@ -96,7 +121,7 @@ function render(data) {
 
 async function poll() {
   try {
-    const response = await fetch("/api/status");
+    const response = await fetch("/api/status", { cache: "no-store" });
     render(await response.json());
   } catch (error) {
     fields.status.textContent = "HUD disconnected";

@@ -110,6 +110,7 @@ class AppConfig:
     fuel_safety_laps: float = 0.5
     stale_seconds: float = 3.0
     position_coalesce_seconds: float = 1.5
+    race_duration_minutes: float | None = None
     max_frame_buffer: int = 3_600
     voice_mode: VoiceMode = "quiet_driver"
     wake_phrase: str = "engineer"
@@ -131,6 +132,9 @@ class AppConfig:
             heartbeat_type=os.getenv("GT7ENG_HEARTBEAT", "B"),
             position_coalesce_seconds=float(
                 os.getenv("GT7ENG_POSITION_COALESCE_SECONDS", "1.5")
+            ),
+            race_duration_minutes=_float_or_none(
+                os.getenv("GT7ENG_RACE_DURATION_MINUTES")
             ),
             voice_mode=_voice_mode(os.getenv("GT7ENG_VOICE_MODE", "quiet_driver")),
             wake_phrase=os.getenv("GT7ENG_WAKE_PHRASE", "engineer").strip().lower(),
@@ -181,3 +185,13 @@ def _bool(value: str | None, default: bool) -> bool:
     if value is None or value == "":
         return default
     return value.strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _float_or_none(value: str | None) -> float | None:
+    if value is None or value.strip() == "":
+        return None
+    try:
+        parsed = float(value)
+    except ValueError:
+        return None
+    return parsed if parsed > 0 else None

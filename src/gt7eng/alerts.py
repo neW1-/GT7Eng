@@ -4,7 +4,7 @@ import time
 
 from .config import AppConfig
 from .models import Alert, RaceSnapshot, StateUpdate
-from .timefmt import format_delta, format_lap_time, plural
+from .timefmt import format_delta, format_duration_words, format_lap_time, plural
 
 
 class AlertManager:
@@ -119,6 +119,8 @@ class AlertManager:
             parts.append("Two laps left.")
         elif snap.laps_left is not None:
             parts.append(f"{plural(snap.laps_left, 'lap')} left.")
+        elif snap.race_mode == "timed" and snap.race_time_remaining_ms is not None:
+            parts.append(f"{format_duration_words(snap.race_time_remaining_ms)} remaining.")
         return [self._alert("lap", "info", " ".join(parts))]
 
     def _fuel_alerts(self, snapshot: RaceSnapshot, completed: bool) -> list[Alert]:

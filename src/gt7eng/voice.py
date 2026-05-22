@@ -5,7 +5,7 @@ from dataclasses import dataclass
 
 from .config import AppConfig
 from .models import RaceSnapshot
-from .timefmt import format_lap_time
+from .timefmt import format_duration_words, format_lap_time
 
 
 @dataclass(slots=True)
@@ -15,6 +15,7 @@ class VoiceResult:
     intent: str
     response: str
     confidence: float = 1.0
+    race_duration_minutes: float | None = None
 
 
 def parse_voice_command(text: str, snapshot: RaceSnapshot, config: AppConfig) -> VoiceResult:
@@ -33,12 +34,26 @@ def parse_voice_command(text: str, snapshot: RaceSnapshot, config: AppConfig) ->
 
     if _matches(normalized, "fuel", "gas"):
         return VoiceResult(True, False, "fuel_status", _fuel_status(snapshot))
+    race_duration = _parse_race_duration_minutes(normalized)
+    if race_duration is not None:
+        return VoiceResult(
+            True,
+            False,
+            "set_race_duration",
+            f"Race duration set to {format_duration_words(int(race_duration * 60_000))}.",
+            1.0,
+            race_duration,
+        )
     if _matches(normalized, "pit", "box", "stop"):
         return VoiceResult(True, False, "pit_status", snapshot.pit_recommendation)
-    if "laps left" in normalized or "how many laps" in normalized:
-        laps = snapshot.laps_left
-        response = "Laps left is unavailable." if laps is None else f"{laps} laps left."
-        return VoiceResult(True, False, "laps_left", response)
+    if (
+        "laps left" in normalized
+        or "how many laps" in normalized
+        or normalized in {"lap", "laps"}
+    ):
+        return VoiceResult(True, False, "laps_left", _lap_status(snapshot))
+    if "time left" in normalized or "time remaining" in normalized or "how much time" in normalized:
+        return VoiceResult(True, False, "time_remaining", _time_remaining(snapshot))
     if "last lap" in normalized:
         return VoiceResult(
             True,
@@ -96,14 +111,45 @@ def _tire_status(snapshot: RaceSnapshot) -> str:
     return f"Tires look okay. Hottest is {hottest:.0f} degrees."
 
 
+def _lap_status(snapshot: RaceSnapshot) -> str:
+    if snapshot.race_mode == "timed":
+        lap = (
+            f"Lap {snapshot.current_lap}"
+            if snapshot.current_lap is not None and snapshot.current_lap > 0
+            else "Timed race"
+        )
+        if snapshot.race_time_remaining_ms is not None:
+            return f"{lap}, {format_duration_words(snapshot.race_time_remaining_ms)} remaining."
+        return f"{lap}. Time remaining is unavailable; set the race duration."
+    if snapshot.laps_left is not None:
+        return f"{snapshot.laps_left} laps left."
+    if snapshot.current_lap is not None:
+        return f"Lap {snapshot.current_lap}. Laps left is unavailable."
+    return "Laps left is unavailable."
+
+
+def _time_remaining(snapshot: RaceSnapshot) -> str:
+    if snapshot.race_time_remaining_ms is None:
+        return "Time remaining is unavailable."
+    return f"{format_duration_words(snapshot.race_time_remaining_ms)} remaining."
+
+
 def _status(snapshot: RaceSnapshot) -> str:
     parts: list[str] = []
     if snapshot.current_position is not None:
         parts.append(f"P{snapshot.current_position}")
-    if snapshot.current_lap is not None and snapshot.total_laps is not None:
+    if (
+        snapshot.current_lap is not None
+        and snapshot.current_lap > 0
+        and snapshot.total_laps is not None
+    ):
         parts.append(f"lap {snapshot.current_lap} of {snapshot.total_laps}")
+    elif snapshot.current_lap is not None and snapshot.current_lap > 0:
+        parts.append(f"lap {snapshot.current_lap}")
     if snapshot.laps_left is not None:
         parts.append(f"{snapshot.laps_left} laps left")
+    elif snapshot.race_time_remaining_ms is not None:
+        parts.append(f"{format_duration_words(snapshot.race_time_remaining_ms)} remaining")
     if snapshot.fuel_laps_remaining is not None:
         parts.append(f"fuel {snapshot.fuel_laps_remaining:.1f} laps")
     if not parts:
@@ -113,6 +159,23 @@ def _status(snapshot: RaceSnapshot) -> str:
 
 def _matches(text: str, *words: str) -> bool:
     return any(word in text for word in words)
+
+
+def _parse_race_duration_minutes(text: str) -> float | None:
+    if "race" not in text and "duration" not in text and "timer" not in text:
+        return None
+    match = re.search(
+        r"(?:set|use|race|duration|timer|time|length).{0,30}?"
+        r"(?P<value>\d+(?:\.\d+)?)\s*(?P<unit>hour|hours|hr|hrs|minute|minutes|min|mins)",
+        text,
+    )
+    if not match:
+        return None
+    value = float(match.group("value"))
+    unit = match.group("unit")
+    if unit.startswith("hour") or unit.startswith("hr"):
+        return value * 60.0
+    return value
 
 
 def _normalize(text: str) -> str:

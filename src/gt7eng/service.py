@@ -147,6 +147,7 @@ class RaceEngineerService:
                 "preset": self.config.preset,
                 "verbosity": self.config.verbosity,
                 "heartbeat_type": self.config.heartbeat_type,
+                "race_duration_minutes": self.config.race_duration_minutes,
                 "stt": {
                     "enabled": self.config.stt.enabled,
                     "engine": self.config.stt.engine,
@@ -205,6 +206,8 @@ class RaceEngineerService:
             self._muted = False
         elif result.intent == "radio_check":
             self._muted = False
+        elif result.intent == "set_race_duration" and result.race_duration_minutes:
+            self.config.race_duration_minutes = result.race_duration_minutes
 
     def _command_response(self, text: str, result: VoiceResult, source: str) -> dict:
         return {

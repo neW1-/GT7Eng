@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>GT7 Race Engineer</title>
-    <link rel="stylesheet" href="/static/styles.css" />
+    <link rel="stylesheet" href="/static/styles.css?v=timed-race-hud-2" />
   </head>
   <body>
     <main class="shell">
@@ -35,8 +35,12 @@
               <strong id="lap">--</strong>
             </div>
             <div>
-              <span class="label">Laps Left</span>
-              <strong id="laps-left">--</strong>
+              <span class="label">Duration</span>
+              <strong id="race-duration">--:--</strong>
+            </div>
+            <div>
+              <span id="remaining-label" class="label">Laps Left</span>
+              <strong id="race-remaining">--</strong>
             </div>
           </div>
         </article>
@@ -102,6 +106,6 @@
         </article>
       </section>
     </main>
-    <script src="/static/app.js"></script>
+    <script src="/static/app.js?v=timed-race-hud-2"></script>
   </body>
 </html>
