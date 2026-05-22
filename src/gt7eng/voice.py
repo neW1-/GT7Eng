@@ -76,7 +76,7 @@ def parse_voice_command(text: str, snapshot: RaceSnapshot, config: AppConfig) ->
 def _fuel_status(snapshot: RaceSnapshot) -> str:
     if snapshot.fuel_level is None:
         return "Fuel data is unavailable."
-    parts = [f"Fuel is {snapshot.fuel_level:.1f} liters."]
+    parts = [f"Fuel is {snapshot.fuel_level:.1f} percent."]
     if snapshot.fuel_laps_remaining is not None:
         parts.append(f"That is {snapshot.fuel_laps_remaining:.1f} laps.")
     if snapshot.fuel_margin_laps is not None:

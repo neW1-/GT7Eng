@@ -236,6 +236,7 @@ class RaceSnapshot:
     fuel_level: float | None = None
     fuel_capacity: float | None = None
     fuel_per_lap: float | None = None
+    fuel_unit: str = "percent"
     fuel_laps_remaining: float | None = None
     fuel_margin_laps: float | None = None
     pit_recommendation: str = "No fuel data yet."
@@ -262,6 +263,8 @@ class RaceSnapshot:
         data["last_lap_time"] = format_lap_time(self.last_lap_time_ms)
         data["best_lap_time"] = format_lap_time(self.best_lap_time_ms)
         data["average_lap_time"] = format_lap_time(self.average_lap_time_ms)
+        data["fuel_level_percent"] = self.fuel_level
+        data["fuel_per_lap_percent"] = self.fuel_per_lap
         return data
 
 
@@ -269,6 +272,7 @@ class RaceSnapshot:
 class StateUpdate:
     snapshot: RaceSnapshot
     previous: RaceSnapshot | None
+    timestamp: float = 0.0
     completed_lap: LapRecord | None = None
     position_changed: tuple[int | None, int] | None = None
     incident_detected: str | None = None

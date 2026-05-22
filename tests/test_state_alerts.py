@@ -17,7 +17,7 @@ def test_lap_position_and_fuel_projection_alerts():
             best_lap_time_ms=-1,
         )
     )
-    alerts = service.update_frame(
+    lap_alerts = service.update_frame(
         synthetic_frame(
             timestamp=2.0,
             current_lap=2,
@@ -28,8 +28,19 @@ def test_lap_position_and_fuel_projection_alerts():
             best_lap_time_ms=98_500,
         )
     )
+    position_alerts = service.update_frame(
+        synthetic_frame(
+            timestamp=3.6,
+            current_lap=2,
+            total_laps=3,
+            current_position=3,
+            fuel_level=20.0,
+            last_lap_time_ms=98_500,
+            best_lap_time_ms=98_500,
+        )
+    )
 
-    messages = [alert.message for alert in alerts]
+    messages = [alert.message for alert in [*lap_alerts, *position_alerts]]
     assert any("Gained 1 place" in message for message in messages)
     assert any("Lap 1" in message for message in messages)
 
@@ -38,13 +49,49 @@ def test_lap_position_and_fuel_projection_alerts():
     assert snapshot.fuel_per_lap == 10.0
     assert snapshot.fuel_laps_remaining == 2.0
     assert snapshot.fuel_margin_laps == 0.0
+    assert snapshot.fuel_unit == "percent"
+    assert snapshot.to_dict()["fuel_level_percent"] == 20.0
+    assert snapshot.to_dict()["fuel_per_lap_percent"] == 10.0
 
 
 def test_position_loss_alert():
     service = RaceEngineerService(AppConfig())
-    service.update_frame(synthetic_frame(current_lap=1, current_position=2))
-    alerts = service.update_frame(synthetic_frame(current_lap=1, current_position=4))
+    service.update_frame(synthetic_frame(timestamp=1.0, current_lap=1, current_position=2))
+    service.update_frame(synthetic_frame(timestamp=1.1, current_lap=1, current_position=4))
+    alerts = service.update_frame(
+        synthetic_frame(timestamp=2.7, current_lap=1, current_position=4)
+    )
     assert any("Lost 2 places" in alert.message for alert in alerts)
+
+
+def test_rapid_position_changes_are_coalesced():
+    service = RaceEngineerService(AppConfig())
+    service.update_frame(synthetic_frame(timestamp=1.0, current_lap=1, current_position=13))
+    first = service.update_frame(
+        synthetic_frame(timestamp=1.1, current_lap=1, current_position=12)
+    )
+    second = service.update_frame(
+        synthetic_frame(timestamp=1.6, current_lap=1, current_position=11)
+    )
+    third = service.update_frame(
+        synthetic_frame(timestamp=2.0, current_lap=1, current_position=10)
+    )
+    final = service.update_frame(
+        synthetic_frame(timestamp=3.6, current_lap=1, current_position=10)
+    )
+
+    assert not [alert for alert in [*first, *second, *third] if alert.category == "position"]
+    assert [alert.message for alert in final if alert.category == "position"] == [
+        "Gained 3 places, now P10."
+    ]
+
+
+def test_fuel_threshold_uses_level_as_percentage_not_capacity_ratio():
+    service = RaceEngineerService(AppConfig())
+    alerts = service.update_frame(synthetic_frame(fuel_level=60.0, fuel_capacity=1000.0))
+    assert not any("Fuel below" in alert.message for alert in alerts)
+    assert service.snapshot.fuel_level == 60.0
+    assert service.snapshot.fuel_capacity == 100.0
 
 
 def test_tire_and_car_health_alerts():
@@ -62,9 +109,20 @@ def test_tire_and_car_health_alerts():
 
 def test_spoken_alerts_queue_voice_jobs_once():
     service = RaceEngineerService(AppConfig())
-    service.update_frame(synthetic_frame(current_lap=1, current_position=4))
+    service.update_frame(synthetic_frame(timestamp=1.0, current_lap=1, current_position=4))
     service.update_frame(
         synthetic_frame(
+            timestamp=2.0,
+            current_lap=2,
+            current_position=3,
+            fuel_level=20.0,
+            last_lap_time_ms=98_500,
+            best_lap_time_ms=98_500,
+        )
+    )
+    service.update_frame(
+        synthetic_frame(
+            timestamp=3.6,
             current_lap=2,
             current_position=3,
             fuel_level=20.0,

@@ -29,6 +29,7 @@ export class AudioQueue {
     });
 
     this.player.on(AudioPlayerStatus.Idle, () => {
+      if (this.playing) this.logger.info("Audio playback finished");
       this.playing = false;
       this.emitPlayback(false);
       this.playNext();
@@ -36,11 +37,15 @@ export class AudioQueue {
   }
 
   subscribe(connection) {
-    connection.subscribe(this.player);
+    const subscription = connection.subscribe(this.player);
+    this.logger.info("Audio player subscribed to voice connection", {
+      subscribed: Boolean(subscription)
+    });
   }
 
   enqueue(resourceFactory) {
     this.queue.push(resourceFactory);
+    this.logger.info("Queued audio resource", { queueLength: this.queue.length });
     this.playNext();
   }
 
@@ -66,6 +71,7 @@ export class AudioQueue {
       const resource = await factory();
       this.playing = true;
       this.emitPlayback(true);
+      this.logger.info("Starting audio playback");
       this.player.play(resource);
     } catch (error) {
       this.logger.error("Unable to create audio resource", { message: error.message });
@@ -91,7 +97,7 @@ export function createResourceFromFile(path) {
 
 export function createRadioCheckResource({ frequency = 880, durationMs = 550 } = {}) {
   return () =>
-    createAudioResource(Readable.from(generateTonePcm({ frequency, durationMs })), {
+    createAudioResource(Readable.from([generateTonePcm({ frequency, durationMs })]), {
       inputType: StreamType.Raw
     });
 }

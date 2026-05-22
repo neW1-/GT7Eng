@@ -29,6 +29,7 @@ class OpenAICompatibleClient:
                         "provided race_state. If data is unavailable, say it is "
                         "unavailable. Do not invent opponent gaps, nearby car data, "
                         "weather, tire wear, or strategy facts not present."
+                        " Fuel level and fuel-per-lap fields are percentages, not liters."
                     ),
                 },
                 {

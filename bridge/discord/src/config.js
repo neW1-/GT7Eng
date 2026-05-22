@@ -1,3 +1,6 @@
+import { existsSync, readFileSync } from "node:fs";
+import path from "node:path";
+
 const TRUE_VALUES = new Set(["1", "true", "yes", "on"]);
 const FALSE_VALUES = new Set(["0", "false", "no", "off"]);
 
@@ -19,42 +22,43 @@ export function parseInteger(value, defaultValue, name) {
 }
 
 export function readConfig(env = process.env) {
-  const mode = env.DEFAULT_AUDIO_MODE || "quiet_driver";
+  const source = env === process.env ? { ...readDotEnv(), ...env } : env;
+  const mode = source.DEFAULT_AUDIO_MODE || "quiet_driver";
   if (!["wake_phrase", "quiet_driver", "silent"].includes(mode)) {
     throw new Error("DEFAULT_AUDIO_MODE must be one of: wake_phrase, quiet_driver, silent");
   }
 
   return {
     discord: {
-      token: env.DISCORD_TOKEN || "",
-      clientId: env.DISCORD_CLIENT_ID || "",
-      guildId: env.DISCORD_GUILD_ID || "",
-      voiceChannelId: env.DISCORD_VOICE_CHANNEL_ID || "",
-      driverUserId: env.DISCORD_DRIVER_USER_ID || ""
+      token: source.DISCORD_TOKEN || "",
+      clientId: source.DISCORD_CLIENT_ID || "",
+      guildId: source.DISCORD_GUILD_ID || "",
+      voiceChannelId: source.DISCORD_VOICE_CHANNEL_ID || "",
+      driverUserId: source.DISCORD_DRIVER_USER_ID || ""
     },
     python: {
-      baseUrl: stripTrailingSlash(env.PYTHON_SERVICE_URL || "http://127.0.0.1:8000"),
-      token: env.PYTHON_SERVICE_TOKEN || "",
-      statusTimeoutMs: parseInteger(env.STATUS_POLL_TIMEOUT_MS, 3000, "STATUS_POLL_TIMEOUT_MS")
+      baseUrl: stripTrailingSlash(source.PYTHON_SERVICE_URL || "http://127.0.0.1:8000"),
+      token: source.PYTHON_SERVICE_TOKEN || "",
+      statusTimeoutMs: parseInteger(source.STATUS_POLL_TIMEOUT_MS, 3000, "STATUS_POLL_TIMEOUT_MS")
     },
     commands: {
-      registerScope: env.COMMAND_REGISTER_SCOPE || "guild"
+      registerScope: source.COMMAND_REGISTER_SCOPE || "guild"
     },
     audio: {
-      jobPollIntervalMs: parseInteger(env.JOB_POLL_INTERVAL_MS, 1000, "JOB_POLL_INTERVAL_MS"),
-      defaultEngineerMuted: parseBoolean(env.DEFAULT_ENGINEER_MUTED, false),
+      jobPollIntervalMs: parseInteger(source.JOB_POLL_INTERVAL_MS, 1000, "JOB_POLL_INTERVAL_MS"),
+      defaultEngineerMuted: parseBoolean(source.DEFAULT_ENGINEER_MUTED, false),
       defaultMode: mode,
-      autoJoinOnReady: parseBoolean(env.AUTO_JOIN_ON_READY, false),
-      receiveWatchdogMs: parseInteger(env.RECEIVE_WATCHDOG_MS, 120000, "RECEIVE_WATCHDOG_MS")
+      autoJoinOnReady: parseBoolean(source.AUTO_JOIN_ON_READY, false),
+      receiveWatchdogMs: parseInteger(source.RECEIVE_WATCHDOG_MS, 120000, "RECEIVE_WATCHDOG_MS")
     },
     stt: {
-      enabled: parseBoolean(env.DISCORD_STT_ENABLED, false),
-      minSegmentMs: parseInteger(env.DISCORD_STT_MIN_SEGMENT_MS, 450, "DISCORD_STT_MIN_SEGMENT_MS"),
-      maxSegmentMs: parseInteger(env.DISCORD_STT_MAX_SEGMENT_MS, 6000, "DISCORD_STT_MAX_SEGMENT_MS"),
-      sampleRate: parseInteger(env.DISCORD_STT_SAMPLE_RATE, 48000, "DISCORD_STT_SAMPLE_RATE"),
-      channels: parseInteger(env.DISCORD_STT_CHANNELS, 2, "DISCORD_STT_CHANNELS")
+      enabled: parseBoolean(source.DISCORD_STT_ENABLED, false),
+      minSegmentMs: parseInteger(source.DISCORD_STT_MIN_SEGMENT_MS, 450, "DISCORD_STT_MIN_SEGMENT_MS"),
+      maxSegmentMs: parseInteger(source.DISCORD_STT_MAX_SEGMENT_MS, 6000, "DISCORD_STT_MAX_SEGMENT_MS"),
+      sampleRate: parseInteger(source.DISCORD_STT_SAMPLE_RATE, 48000, "DISCORD_STT_SAMPLE_RATE"),
+      channels: parseInteger(source.DISCORD_STT_CHANNELS, 2, "DISCORD_STT_CHANNELS")
     },
-    logLevel: env.LOG_LEVEL || "info"
+    logLevel: source.LOG_LEVEL || "info"
   };
 }
 
@@ -72,4 +76,19 @@ export function assertRuntimeConfig(config) {
 
 function stripTrailingSlash(value) {
   return value.replace(/\/+$/, "");
+}
+
+function readDotEnv() {
+  const file = path.join(process.cwd(), ".env");
+  if (!existsSync(file)) return {};
+  const values = {};
+  for (const line of readFileSync(file, "utf8").split(/\r?\n/)) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith("#")) continue;
+    const match = trimmed.match(/^([A-Za-z_][A-Za-z0-9_]*)=(.*)$/);
+    if (!match) continue;
+    const [, key, rawValue] = match;
+    values[key] = rawValue.replace(/^['"]|['"]$/g, "");
+  }
+  return values;
 }

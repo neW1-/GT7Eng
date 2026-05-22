@@ -15,6 +15,9 @@ class AlertManager:
         self._system_connected: bool | None = None
         self._fuel_thresholds_announced: set[int] = set()
         self._tire_wear_stage = 0
+        self._pending_position_start: int | None = None
+        self._pending_position_latest: int | None = None
+        self._pending_position_changed_at: float | None = None
 
     def from_update(self, update: StateUpdate) -> list[Alert]:
         if update.snapshot.session_phase in {"menu", "loading", "paused", "finished", "stale"}:
@@ -48,10 +51,32 @@ class AlertManager:
 
     def _position_alerts(self, update: StateUpdate) -> list[Alert]:
         if not self.config.category_enabled("position", "balanced"):
+            self._clear_pending_position()
             return []
-        if update.position_changed is None:
+        if update.position_changed is not None:
+            old, new = update.position_changed
+            self._record_position_change(old, new, update.timestamp)
+        return self._flush_position_alerts(update.timestamp)
+
+    def _record_position_change(self, old: int | None, new: int, changed_at: float) -> None:
+        if self._pending_position_start is None:
+            self._pending_position_start = old
+        self._pending_position_latest = new
+        self._pending_position_changed_at = changed_at
+
+    def _flush_position_alerts(self, now: float) -> list[Alert]:
+        if (
+            self._pending_position_latest is None
+            or self._pending_position_changed_at is None
+            or now - self._pending_position_changed_at < self.config.position_coalesce_seconds
+        ):
             return []
-        old, new = update.position_changed
+
+        old = self._pending_position_start
+        new = self._pending_position_latest
+        self._clear_pending_position()
+        if old == new:
+            return []
         if old is None:
             message = f"P{new}."
         elif new < old:
@@ -61,6 +86,11 @@ class AlertManager:
             lost = new - old
             message = f"Lost {plural(lost, 'place')}, now P{new}."
         return [self._alert("position", "important", message)]
+
+    def _clear_pending_position(self) -> None:
+        self._pending_position_start = None
+        self._pending_position_latest = None
+        self._pending_position_changed_at = None
 
     def _lap_alerts(self, update: StateUpdate) -> list[Alert]:
         if update.completed_lap is None:
@@ -121,9 +151,9 @@ class AlertManager:
     def _fuel_threshold_alerts(self, snapshot: RaceSnapshot) -> list[Alert]:
         if not self.config.category_enabled("fuel", "balanced"):
             return []
-        if snapshot.fuel_level is None or not snapshot.fuel_capacity:
+        if snapshot.fuel_level is None:
             return []
-        percentage = max(0.0, min(100.0, snapshot.fuel_level / snapshot.fuel_capacity * 100.0))
+        percentage = max(0.0, min(100.0, snapshot.fuel_level))
         for threshold in [50, 20, 10]:
             if percentage > threshold + 5:
                 self._fuel_thresholds_announced.discard(threshold)

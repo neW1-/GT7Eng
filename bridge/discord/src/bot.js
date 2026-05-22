@@ -1,5 +1,11 @@
 import { ChannelType, Client, GatewayIntentBits } from "discord.js";
-import { EndBehaviorType, VoiceConnectionStatus, getVoiceConnection, joinVoiceChannel } from "@discordjs/voice";
+import {
+  EndBehaviorType,
+  VoiceConnectionStatus,
+  entersState,
+  getVoiceConnection,
+  joinVoiceChannel
+} from "@discordjs/voice";
 import prism from "prism-media";
 import {
   AudioQueue,
@@ -129,15 +135,15 @@ export class DiscordVoiceBridge {
       this.state.lastError = error.message;
       this.logger.error("Command failed", { command: interaction.commandName, message: error.message });
       const payload = { content: `Command failed: ${error.message}`, ephemeral: true };
-      if (interaction.deferred || interaction.replied) await interaction.followUp(payload);
-      else await interaction.reply(payload);
+      await this.safeInteractionResponse(interaction, payload);
     }
   }
 
   async handleJoin(interaction) {
+    await interaction.deferReply({ ephemeral: true });
     const channel = await this.resolveVoiceChannel(interaction);
     await this.joinChannel(channel);
-    await interaction.reply(`Joined ${channel.name}.`);
+    await interaction.editReply(`Joined ${channel.name}.`);
   }
 
   async handleLeave(interaction) {
@@ -189,12 +195,22 @@ export class DiscordVoiceBridge {
   }
 
   async handleRadioCheck(interaction) {
+    await interaction.deferReply();
     if (!this.state.voiceChannelId) {
-      await this.handleJoin(interaction);
-    } else {
-      await interaction.reply("Radio check.");
+      const channel = await this.resolveVoiceChannel(interaction);
+      await this.joinChannel(channel);
     }
+    await interaction.editReply("Radio check.");
     this.audio.enqueue(createRadioCheckResource());
+  }
+
+  async safeInteractionResponse(interaction, payload) {
+    try {
+      if (interaction.deferred || interaction.replied) await interaction.followUp(payload);
+      else await interaction.reply(payload);
+    } catch (replyError) {
+      this.logger.warn("Unable to send command failure response", { message: replyError.message });
+    }
   }
 
   async resolveVoiceChannel(interaction) {
@@ -221,11 +237,29 @@ export class DiscordVoiceBridge {
   }
 
   async joinChannel(channel) {
+    getVoiceConnection(channel.guild.id)?.destroy();
+    this.stopReceiveStreams();
+    this.state.voiceChannelId = null;
     const connection = joinVoiceChannel({
       channelId: channel.id,
       guildId: channel.guild.id,
       adapterCreator: channel.guild.voiceAdapterCreator,
-      selfDeaf: false
+      selfDeaf: false,
+      selfMute: false,
+      debug: this.config.logLevel === "debug"
+    });
+    connection.on("debug", (message) => {
+      this.logger.debug("Voice debug", { message: redactVoiceDebug(message) });
+    });
+    connection.on("error", (error) => {
+      this.state.lastError = error.message;
+      this.logger.error("Voice connection error", { message: error.message });
+    });
+    connection.on("stateChange", (oldState, newState) => {
+      this.logger.info("Voice connection state changed", {
+        from: oldState.status,
+        to: newState.status
+      });
     });
     connection.on(VoiceConnectionStatus.Disconnected, () => {
       this.state.voiceChannelId = null;
@@ -239,6 +273,8 @@ export class DiscordVoiceBridge {
         }, 1500);
       }
     });
+    await entersState(connection, VoiceConnectionStatus.Ready, 30000);
+    this.logger.info("Voice connection ready", { channelId: channel.id });
     this.audio.subscribe(connection);
     this.state.voiceChannelId = channel.id;
     this.startReceiveMonitor(connection);
@@ -368,4 +404,12 @@ export class DiscordVoiceBridge {
       }
     }, Math.min(this.config.audio.receiveWatchdogMs, 30000));
   }
+}
+
+function redactVoiceDebug(message) {
+  return String(message)
+    .replace(/"token":"[^"]+"/g, '"token":"<redacted>"')
+    .replace(/"secret_key":\[[^\]]+\]/g, '"secret_key":"<redacted>"')
+    .replace(/"secretKey":\{[^}]+\}/g, '"secretKey":"<redacted>"')
+    .replace(/"media_session_id":"[^"]+"/g, '"media_session_id":"<redacted>"');
 }

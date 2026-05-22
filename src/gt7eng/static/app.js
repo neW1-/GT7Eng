@@ -72,7 +72,7 @@ function render(data) {
   fields.lastLap.textContent = snap.last_lap_time || "--:--.---";
   fields.bestLap.textContent = snap.best_lap_time || "--:--.---";
   fields.averageLap.textContent = snap.average_lap_time || "--:--.---";
-  fields.fuelLevel.textContent = fmt(snap.fuel_level, " L", 1);
+  fields.fuelLevel.textContent = fmt(snap.fuel_level_percent ?? snap.fuel_level, "%", 1);
   fields.fuelLaps.textContent = fmt(snap.fuel_laps_remaining, "", 1);
   fields.fuelMargin.textContent = fmt(snap.fuel_margin_laps, "", 1);
   fields.pit.textContent = snap.pit_recommendation || "No fuel data yet.";

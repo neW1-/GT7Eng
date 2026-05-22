@@ -10,6 +10,8 @@ def test_quiet_driver_accepts_strict_fuel_command():
     assert result["handled"] is True
     assert result["intent"] == "fuel_status"
     assert "42.0" in result["response"]
+    assert "percent" in result["response"]
+    assert "liter" not in result["response"].lower()
 
 
 def test_wake_phrase_ignores_without_phrase():

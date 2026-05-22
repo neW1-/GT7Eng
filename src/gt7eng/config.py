@@ -109,6 +109,7 @@ class AppConfig:
     heartbeat_type: str = "B"
     fuel_safety_laps: float = 0.5
     stale_seconds: float = 3.0
+    position_coalesce_seconds: float = 1.5
     max_frame_buffer: int = 3_600
     voice_mode: VoiceMode = "quiet_driver"
     wake_phrase: str = "engineer"
@@ -128,6 +129,9 @@ class AppConfig:
             preset=preset,
             ps_ip=os.getenv("GT7ENG_PS_IP") or None,
             heartbeat_type=os.getenv("GT7ENG_HEARTBEAT", "B"),
+            position_coalesce_seconds=float(
+                os.getenv("GT7ENG_POSITION_COALESCE_SECONDS", "1.5")
+            ),
             voice_mode=_voice_mode(os.getenv("GT7ENG_VOICE_MODE", "quiet_driver")),
             wake_phrase=os.getenv("GT7ENG_WAKE_PHRASE", "engineer").strip().lower(),
             verbosity=verbosity,

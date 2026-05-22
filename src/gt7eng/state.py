@@ -53,8 +53,9 @@ class RaceState:
         driving_event = self._update_driving_style(frame)
         incident_detected = self._detect_incident(frame, phase)
 
-        if frame.current_lap is not None and frame.fuel_level is not None:
-            self._lap_start_fuel.setdefault(frame.current_lap, frame.fuel_level)
+        fuel_percent = _fuel_percent(frame.fuel_level)
+        if frame.current_lap is not None and fuel_percent is not None:
+            self._lap_start_fuel.setdefault(frame.current_lap, fuel_percent)
 
         snapshot = self._build_snapshot(frame, phase, incident_detected)
         self._last_frame = frame
@@ -62,6 +63,7 @@ class RaceState:
         return StateUpdate(
             snapshot=snapshot,
             previous=previous_snapshot,
+            timestamp=frame.timestamp,
             completed_lap=completed_lap,
             position_changed=position_changed,
             incident_detected=incident_detected,
@@ -88,8 +90,9 @@ class RaceState:
 
         start_fuel = self._lap_start_fuel.get(last.current_lap)
         fuel_used = None
-        if start_fuel is not None and frame.fuel_level is not None:
-            fuel_used = max(0.0, start_fuel - frame.fuel_level)
+        fuel_percent = _fuel_percent(frame.fuel_level)
+        if start_fuel is not None and fuel_percent is not None:
+            fuel_used = max(0.0, start_fuel - fuel_percent)
 
         lap = LapRecord(
             lap_number=last.current_lap,
@@ -118,10 +121,11 @@ class RaceState:
     ) -> RaceSnapshot:
         fuel_per_lap = self._fuel_per_lap()
         laps_left = self._laps_left(frame.current_lap, frame.total_laps)
+        fuel_percent = _fuel_percent(frame.fuel_level)
         fuel_laps_remaining = None
         fuel_margin = None
-        if fuel_per_lap and frame.fuel_level is not None and fuel_per_lap > 0:
-            fuel_laps_remaining = frame.fuel_level / fuel_per_lap
+        if fuel_per_lap and fuel_percent is not None and fuel_per_lap > 0:
+            fuel_laps_remaining = fuel_percent / fuel_per_lap
             fuel_margin = (
                 fuel_laps_remaining - laps_left if laps_left is not None else None
             )
@@ -143,8 +147,8 @@ class RaceState:
             last_lap_time_ms=frame.last_lap_time_ms,
             best_lap_time_ms=frame.best_lap_time_ms,
             average_lap_time_ms=average_lap,
-            fuel_level=frame.fuel_level,
-            fuel_capacity=frame.fuel_capacity,
+            fuel_level=fuel_percent,
+            fuel_capacity=100.0 if fuel_percent is not None else None,
             fuel_per_lap=fuel_per_lap,
             fuel_laps_remaining=fuel_laps_remaining,
             fuel_margin_laps=fuel_margin,
@@ -356,3 +360,9 @@ def _avg(values: list[float | None]) -> float | None:
     if not present:
         return None
     return sum(present) / len(present)
+
+
+def _fuel_percent(value: float | None) -> float | None:
+    if value is None:
+        return None
+    return max(0.0, min(100.0, value))
