@@ -37,7 +37,7 @@ export function readConfig(env = process.env) {
       driverUserId: source.DISCORD_DRIVER_USER_ID || ""
     },
     python: {
-      baseUrl: stripTrailingSlash(source.PYTHON_SERVICE_URL || "http://127.0.0.1:8000"),
+      baseUrl: stripTrailingSlash(source.PYTHON_SERVICE_URL || "http://127.0.0.1:8001"),
       token: source.PYTHON_SERVICE_TOKEN || "",
       statusTimeoutMs: parseInteger(source.STATUS_POLL_TIMEOUT_MS, 3000, "STATUS_POLL_TIMEOUT_MS")
     },

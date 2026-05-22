@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>GT7 Race Engineer</title>
-    <link rel="stylesheet" href="/static/styles.css?v=timed-race-hud-2" />
+    <link rel="stylesheet" href="/static/styles.css?v=llm-intent-hud-1" />
   </head>
   <body>
     <main class="shell">
@@ -91,6 +91,16 @@
           </dl>
         </article>
 
+        <article class="panel">
+          <h2>Voice Debug</h2>
+          <dl>
+            <div><dt>Transcript</dt><dd id="last-transcript" class="debug-value">--</dd></div>
+            <div><dt>Intent</dt><dd id="last-intent">--</dd></div>
+            <div><dt>Confidence</dt><dd id="last-confidence">--</dd></div>
+            <div><dt>Repair</dt><dd id="last-repair" class="debug-value">--</dd></div>
+          </dl>
+        </article>
+
         <article class="panel wide">
           <h2>Alerts</h2>
           <ol id="alerts"></ol>
@@ -106,6 +116,6 @@
         </article>
       </section>
     </main>
-    <script src="/static/app.js?v=timed-race-hud-2"></script>
+    <script src="/static/app.js?v=llm-intent-hud-1"></script>
   </body>
 </html>

@@ -7,7 +7,7 @@ from dataclasses import dataclass
 
 from .alerts import AlertManager
 from .config import AppConfig
-from .llm import OpenAICompatibleClient
+from .llm import IntentRepair, OpenAICompatibleClient
 from .models import Alert, RaceSnapshot, TelemetryFrame
 from .state import RaceState
 from .telemetry import CaptureWriter, TelemetrySource
@@ -42,6 +42,7 @@ class RaceEngineerService:
         self._source_task: asyncio.Task | None = None
         self._capture: CaptureWriter | None = None
         self._muted = False
+        self._last_voice_debug: dict = {}
 
     @property
     def snapshot(self) -> RaceSnapshot:
@@ -88,6 +89,10 @@ class RaceEngineerService:
             self._queue_response_voice_job(response)
             return response
 
+        repaired = self._try_intent_repair(text, source)
+        if repaired is not None:
+            return repaired
+
         answer = self.llm.ask(text, self.snapshot)
         result = VoiceResult(True, False, "llm_question", answer, 0.5)
         response = self._command_response(text, result, source)
@@ -100,7 +105,7 @@ class RaceEngineerService:
         source: str = "discord",
         confidence: float = 1.0,
     ) -> dict:
-        if confidence < self.config.stt.min_confidence:
+        if not text.strip():
             result = VoiceResult(False, True, "low_confidence", "", confidence)
             return self._command_response(text, result, source)
 
@@ -112,6 +117,14 @@ class RaceEngineerService:
             response = self._command_response(text, result, source)
             self._queue_response_voice_job(response)
             return response
+
+        repaired = self._try_intent_repair(text, source)
+        if repaired is not None:
+            return repaired
+
+        if confidence < self.config.stt.min_confidence:
+            result = VoiceResult(False, True, "low_confidence", "", confidence)
+            return self._command_response(text, result, source)
 
         if self.config.voice_mode == "quiet_driver":
             ignored = VoiceResult(False, True, "unknown_quiet_driver", "", result.confidence)
@@ -142,6 +155,7 @@ class RaceEngineerService:
                 "wake_phrase": self.config.wake_phrase,
                 "muted": self._muted,
                 "stt_enabled": self.config.stt.enabled,
+                "last": self._last_voice_debug,
             },
             "config": {
                 "preset": self.config.preset,
@@ -152,6 +166,15 @@ class RaceEngineerService:
                     "enabled": self.config.stt.enabled,
                     "engine": self.config.stt.engine,
                     "model": self.config.stt.model,
+                },
+                "llm": {
+                    "configured": self.llm.available(),
+                    "model": self.config.llm.model,
+                    "disable_thinking": self.config.llm.disable_thinking,
+                    "intent_repair_enabled": self.config.llm.intent_repair_enabled,
+                    "intent_repair_min_confidence": (
+                        self.config.llm.intent_repair_min_confidence
+                    ),
                 },
                 "tts": {
                     "engine": self.config.tts.engine,
@@ -209,8 +232,49 @@ class RaceEngineerService:
         elif result.intent == "set_race_duration" and result.race_duration_minutes:
             self.config.race_duration_minutes = result.race_duration_minutes
 
-    def _command_response(self, text: str, result: VoiceResult, source: str) -> dict:
-        return {
+    def _try_intent_repair(self, text: str, source: str) -> dict | None:
+        if not self.config.llm.intent_repair_enabled:
+            return None
+
+        repair = self.llm.repair_intent(text, self.snapshot)
+        if repair is None:
+            return None
+        if repair.confidence < self.config.llm.intent_repair_min_confidence:
+            return None
+
+        repaired_text = self._repair_text_for_parser(repair)
+        result = parse_voice_command(repaired_text, self.snapshot, self.config)
+        if not result.handled or result.intent != repair.intent:
+            return None
+
+        result.confidence = repair.confidence
+        self._apply_intent(result)
+        response = self._command_response(
+            text,
+            result,
+            source,
+            repair={
+                "intent": repair.intent,
+                "command": repair.command,
+                "confidence": repair.confidence,
+            },
+        )
+        self._queue_response_voice_job(response)
+        return response
+
+    def _repair_text_for_parser(self, repair: IntentRepair) -> str:
+        if self.config.voice_mode == "wake_phrase":
+            return f"{self.config.wake_phrase} {repair.command}"
+        return repair.command
+
+    def _command_response(
+        self,
+        text: str,
+        result: VoiceResult,
+        source: str,
+        repair: dict | None = None,
+    ) -> dict:
+        response = {
             "received_at": time.time(),
             "source": source,
             "text": text,
@@ -220,7 +284,20 @@ class RaceEngineerService:
             "confidence": result.confidence,
             "response": result.response,
             "speak": bool(result.response and not result.ignored),
+            "repair": repair,
         }
+        self._last_voice_debug = {
+            "received_at": response["received_at"],
+            "source": source,
+            "text": text,
+            "handled": result.handled,
+            "ignored": result.ignored,
+            "intent": result.intent,
+            "confidence": result.confidence,
+            "response": result.response,
+            "repair": repair,
+        }
+        return response
 
     def _queue_response_voice_job(self, response: dict) -> None:
         if response["source"] != "discord" or not response["speak"]:

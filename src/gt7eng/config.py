@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Literal
 
 AlertCategory = Literal[
@@ -74,11 +75,14 @@ class LLMConfig:
     api_key: str = ""
     timeout_seconds: float = 8.0
     max_tokens: int = 180
+    disable_thinking: bool = False
+    intent_repair_enabled: bool = True
+    intent_repair_min_confidence: float = 0.55
 
 
 @dataclass(slots=True)
 class DiscordConfig:
-    api_url: str = "http://localhost:8765"
+    api_url: str = "http://localhost:8001"
     driver_user_id: str = ""
     voice_channel_id: str = ""
     guild_id: str = ""
@@ -145,9 +149,16 @@ class AppConfig:
                 api_key=os.getenv("GT7ENG_LLM_API_KEY", ""),
                 timeout_seconds=float(os.getenv("GT7ENG_LLM_TIMEOUT", "8")),
                 max_tokens=int(os.getenv("GT7ENG_LLM_MAX_TOKENS", "180")),
+                disable_thinking=_bool(os.getenv("GT7ENG_LLM_DISABLE_THINKING"), False),
+                intent_repair_enabled=_bool(
+                    os.getenv("GT7ENG_LLM_INTENT_REPAIR"), True
+                ),
+                intent_repair_min_confidence=float(
+                    os.getenv("GT7ENG_LLM_INTENT_REPAIR_MIN_CONFIDENCE", "0.55")
+                ),
             ),
             discord=DiscordConfig(
-                api_url=os.getenv("GT7ENG_API_URL", "http://localhost:8765"),
+                api_url=os.getenv("GT7ENG_API_URL", "http://localhost:8001"),
                 driver_user_id=os.getenv("DISCORD_DRIVER_USER_ID", ""),
                 voice_channel_id=os.getenv("DISCORD_VOICE_CHANNEL_ID", ""),
                 guild_id=os.getenv("DISCORD_GUILD_ID", ""),
@@ -195,3 +206,21 @@ def _float_or_none(value: str | None) -> float | None:
     except ValueError:
         return None
     return parsed if parsed > 0 else None
+
+
+def load_env_file(path: str | os.PathLike[str] = ".env") -> None:
+    env_path = Path(path)
+    if not env_path.exists():
+        return
+    for raw_line in env_path.read_text(encoding="utf-8").splitlines():
+        line = raw_line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, value = line.split("=", 1)
+        key = key.strip()
+        if not key or key in os.environ:
+            continue
+        value = value.strip()
+        if len(value) >= 2 and value[0] == value[-1] and value[0] in {"'", '"'}:
+            value = value[1:-1]
+        os.environ[key] = value

@@ -24,3 +24,5 @@ def test_status_reports_audio_engines():
 
     assert payload["audio"]["stt"]["enabled"] is False
     assert "tts" in payload["audio"]
+    assert "last" in payload["voice"]
+    assert payload["config"]["llm"]["intent_repair_enabled"] is True

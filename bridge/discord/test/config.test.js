@@ -4,7 +4,7 @@ import { assertRuntimeConfig, parseBoolean, readConfig } from "../src/config.js"
 
 test("readConfig applies safe defaults without credentials", () => {
   const config = readConfig({});
-  assert.equal(config.python.baseUrl, "http://127.0.0.1:8000");
+  assert.equal(config.python.baseUrl, "http://127.0.0.1:8001");
   assert.equal(config.audio.jobPollIntervalMs, 1000);
   assert.equal(config.audio.defaultEngineerMuted, false);
   assert.equal(config.audio.defaultMode, "quiet_driver");

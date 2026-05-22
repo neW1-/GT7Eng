@@ -60,7 +60,7 @@ Expected response:
       "id": "job-123",
       "kind": "tts",
       "text": "Box this lap.",
-      "audio_url": "http://127.0.0.1:8000/audio/job-123.wav"
+      "audio_url": "http://127.0.0.1:8001/audio/job-123.wav"
     }
   ]
 }
@@ -81,7 +81,7 @@ Request body:
 Used when a job contains `text` but no audio. Expected response:
 
 ```json
-{ "audio_url": "http://127.0.0.1:8000/audio/generated.wav" }
+{ "audio_url": "http://127.0.0.1:8001/audio/generated.wav" }
 ```
 
 ### `GET /health`
@@ -112,7 +112,7 @@ The bridge subscribes to the configured driver's Opus receive stream and exposes
 POST /api/discord/audio
 ```
 
-The Python service owns transcription and command handling. Unknown speech in `quiet_driver` mode is ignored; wake-phrase mode can fall back to the configured LLM for supported free-form questions.
+The Python service owns transcription and command handling. In `quiet_driver` mode, unknown speech can use the configured LLM only as a structured intent-repair layer that maps noisy transcripts to known deterministic commands; wake-phrase mode can also fall back to the configured LLM for supported free-form questions.
 
 Playback pauses active receive streams so the bot does not transcribe its own race-radio output.
 

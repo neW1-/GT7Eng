@@ -129,6 +129,12 @@ dl div {
 dd {
   margin: 0;
   font-weight: 700;
+  text-align: right;
+}
+
+.debug-value {
+  max-width: 58%;
+  overflow-wrap: anywhere;
 }
 
 .recommendation {

@@ -28,6 +28,7 @@ def create_app(
         text: str
         source: str = "text"
         user_id: str | None = None
+        confidence: float | None = None
 
     app_config = config or AppConfig.from_env()
     service = RaceEngineerService(app_config)
@@ -87,7 +88,11 @@ def create_app(
 
     @app.post("/api/discord/transcript")
     async def discord_transcript(request: CommandRequest) -> dict:
-        return service.handle_transcript(request.text, "discord")
+        return service.handle_transcript(
+            request.text,
+            "discord",
+            1.0 if request.confidence is None else request.confidence,
+        )
 
     @app.post("/api/discord/audio")
     async def discord_audio(request: Request) -> dict:

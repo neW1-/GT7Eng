@@ -3,18 +3,21 @@ from __future__ import annotations
 import argparse
 import asyncio
 import importlib.util
+import os
 import shutil
 import socket
 import sys
 from pathlib import Path
 
-from .config import AppConfig
+from .config import AppConfig, load_env_file
 from .server import run_server
 from .service import RaceEngineerService
 from .telemetry import CaptureWriter, GTTelemTelemetrySource, ReplayTelemetrySource
 
 
 def main(argv: list[str] | None = None) -> int:
+    load_env_file()
+
     parser = argparse.ArgumentParser(prog="gt7eng")
     sub = parser.add_subparsers(dest="command", required=True)
 
@@ -22,8 +25,10 @@ def main(argv: list[str] | None = None) -> int:
     doctor_parser.add_argument("--skip-ps", action="store_true")
 
     run_parser = sub.add_parser("run", help="Run the race engineer service and HUD.")
-    run_parser.add_argument("--host", default="0.0.0.0")
-    run_parser.add_argument("--port", type=int, default=8765)
+    run_parser.add_argument("--host", default=os.getenv("GT7ENG_HOST", "0.0.0.0"))
+    run_parser.add_argument(
+        "--port", type=int, default=int(os.getenv("GT7ENG_PORT", "8001"))
+    )
     run_parser.add_argument("--telemetry", choices=["live", "none", "replay"], default="live")
     run_parser.add_argument("--replay-file", type=Path)
 

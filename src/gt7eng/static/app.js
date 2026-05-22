@@ -26,6 +26,10 @@ const fields = {
   incident: document.querySelector("#incident"),
   wheelspin: document.querySelector("#wheelspin"),
   lockups: document.querySelector("#lockups"),
+  lastTranscript: document.querySelector("#last-transcript"),
+  lastIntent: document.querySelector("#last-intent"),
+  lastConfidence: document.querySelector("#last-confidence"),
+  lastRepair: document.querySelector("#last-repair"),
   alerts: document.querySelector("#alerts"),
   form: document.querySelector("#chat-form"),
   input: document.querySelector("#chat-input"),
@@ -110,6 +114,19 @@ function render(data) {
   fields.incident.textContent = snap.incident_status || "--";
   fields.wheelspin.textContent = snap.driving_style?.wheelspin_events ?? 0;
   fields.lockups.textContent = snap.driving_style?.lockup_events ?? 0;
+  const voiceLast = data.voice?.last || {};
+  const repair = voiceLast.repair || null;
+  fields.lastTranscript.textContent = voiceLast.text || "--";
+  fields.lastIntent.textContent = voiceLast.intent
+    ? `${voiceLast.intent}${voiceLast.ignored ? " (ignored)" : ""}`
+    : "--";
+  fields.lastConfidence.textContent =
+    voiceLast.confidence === null || voiceLast.confidence === undefined
+      ? "--"
+      : Number(voiceLast.confidence).toFixed(2);
+  fields.lastRepair.textContent = repair
+    ? `${repair.intent} · ${Number(repair.confidence).toFixed(2)}`
+    : "--";
   fields.alerts.replaceChildren(
     ...(data.alerts || []).slice(-12).reverse().map((alert) => {
       const item = document.createElement("li");

@@ -22,6 +22,8 @@ Local Gran Turismo 7 race engineer for macOS. It auto-discovers the PS5 via `gt-
 - [x] Coalesce rapid position changes into one net alert before speaking.
 - [x] Timed/endurance race mode avoids “lap X of 0” and supports time-remaining voice responses.
 - [x] Timed/endurance countdown freezes while GT7 telemetry reports the session is paused.
+- [x] Voice debug HUD shows transcript, confidence, intent, and LLM repair status.
+- [x] Optional LLM intent repair maps noisy voice transcripts to deterministic commands.
 
 ## Todo
 
@@ -41,6 +43,7 @@ Local Gran Turismo 7 race engineer for macOS. It auto-discovers the PS5 via `gt-
 - [ ] Validate spoken fuel, pit, lap, tire, and update commands during an active stint.
 - [ ] Tune Discord STT confidence, segment timing, and false-positive suppression from more headset samples.
 - [ ] Add local/LAN OpenAI-compatible LLM smoke tests and model setup docs.
+- [x] Add LLM intent repair for noisy Discord STT transcripts.
 - [x] Add richer incident/coaching monitors for lockups, wheelspin, spins, and impact-like events.
 - [ ] Add off-track detection if GT7 exposes a reliable signal.
 - [ ] Add HUD controls for verbosity presets and voice mode.
@@ -65,10 +68,10 @@ pip install -e ".[dev,voice]"
 
 ```bash
 gt7eng doctor
-gt7eng run --host 0.0.0.0 --port 8765
+gt7eng run --host 0.0.0.0 --port 8001
 ```
 
-Open `http://localhost:8765` for the HUD. Live GT7 telemetry requires GT7 telemetry enabled, PS5 and Mac on the same LAN, and inbound UDP `33740` allowed by macOS firewall.
+Open `http://localhost:8001` for the HUD. Live GT7 telemetry requires GT7 telemetry enabled, PS5 and Mac on the same LAN, and inbound UDP `33740` allowed by macOS firewall.
 
 Fuel note: GT7 fuel is treated as percentage. `fuel_level=100.0` means a full tank, not 100 liters; fuel-per-lap is percentage points consumed per lap.
 
@@ -77,7 +80,7 @@ Position note: rapid position changes are coalesced before being shown/spoken. B
 Timed race note: GT7 reports `total_laps=0` for timed/endurance events. The engineer treats that as timed race mode and says `Lap X` instead of `Lap X of 0`. Set the event length with `GT7ENG_RACE_DURATION_MINUTES` so the engineer can compute time remaining from its race-session clock, for example:
 
 ```bash
-GT7ENG_RACE_DURATION_MINUTES=30 gt7eng run --host 0.0.0.0 --port 8765
+GT7ENG_RACE_DURATION_MINUTES=30 gt7eng run --host 0.0.0.0 --port 8001
 ```
 
 In timed race mode, the HUD Race card shows race duration and time left. “How many laps?” returns lap plus time remaining, and “how much time left?” returns the remaining race time. The timer only counts while the session phase is `racing`; it freezes while GT7 reports `paused`.
@@ -150,20 +153,23 @@ GT7ENG_PIPER_MODEL=/path/to/en_GB-alba-medium.onnx
 GT7ENG_RADIO_EFFECTS=true
 ```
 
-`quiet_driver` mode ignores unknown transcripts instead of sending them to the LLM. `wake_phrase` mode can fall back to the configured LLM after the wake phrase.
+`quiet_driver` mode normally ignores unknown transcripts, but can use the configured LLM as an intent-repair layer. Intent repair only maps noisy STT text to known deterministic commands; the race answer still comes from local telemetry logic. `wake_phrase` mode can also fall back to the configured LLM after the wake phrase for flexible Q&A.
 
 ## Suggested 16 GB Apple Silicon Setup
 
-For a MacBook Air M4 with 16 GB RAM, try an MLX/oMLX 4-bit 8B model first. The LLM is only used for phrasing and flexible Q&A; fuel, pit, lap, and alert logic stays deterministic.
+For a MacBook Air M4 with 16 GB RAM, try an MLX/oMLX 4-bit 9B model first. The LLM is used for intent repair, phrasing, and flexible Q&A; fuel, pit, lap, and alert logic stays deterministic.
 
 Recommended starting point:
 
 ```bash
 GT7ENG_LLM_BASE_URL=http://127.0.0.1:8000/v1
-GT7ENG_LLM_MODEL=mlx-community/Qwen3-8B-4bit
-GT7ENG_LLM_API_KEY=local
+GT7ENG_LLM_MODEL=Qwen3.5-9B-OptiQ-4bit
+GT7ENG_LLM_API_KEY=your_omlx_key
 GT7ENG_LLM_TIMEOUT=4
 GT7ENG_LLM_MAX_TOKENS=80
+GT7ENG_LLM_DISABLE_THINKING=true
+GT7ENG_LLM_INTENT_REPAIR=true
+GT7ENG_LLM_INTENT_REPAIR_MIN_CONFIDENCE=0.55
 ```
 
 Keep STT light while Discord, the HUD, TTS, and telemetry are all running:
@@ -206,7 +212,7 @@ DISCORD_GUILD_ID=your_server_id
 DISCORD_VOICE_CHANNEL_ID=your_private_voice_channel_id
 DISCORD_DRIVER_USER_ID=your_discord_user_id
 
-PYTHON_SERVICE_URL=http://127.0.0.1:8765
+PYTHON_SERVICE_URL=http://127.0.0.1:8001
 DEFAULT_AUDIO_MODE=quiet_driver
 AUTO_JOIN_ON_READY=true
 DISCORD_STT_ENABLED=false
@@ -223,7 +229,7 @@ Start order for a live test:
 ```bash
 # Terminal 1
 . .venv/bin/activate
-gt7eng run --host 0.0.0.0 --port 8765
+gt7eng run --host 0.0.0.0 --port 8001
 
 # Terminal 2
 cd bridge/discord
@@ -237,7 +243,7 @@ GT7ENG_STT_ENABLED=true \
 GT7ENG_STT_MODEL=tiny.en \
 GT7ENG_STT_DEVICE=cpu \
 GT7ENG_STT_MIN_CONFIDENCE=0.45 \
-gt7eng run --host 0.0.0.0 --port 8765
+gt7eng run --host 0.0.0.0 --port 8001
 ```
 
 Next live tests:

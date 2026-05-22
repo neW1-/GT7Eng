@@ -37,6 +37,7 @@ The Discord bot is the race radio: it listens to your headset in a private Disco
   - [x] Browser dashboard for laptop, iPad, phone, or second monitor.
   - [x] Shows live telemetry, fuel strategy, lap history, alerts, and voice status.
   - [x] Shows timed race duration and time left for endurance debugging.
+  - [x] Shows last transcript, confidence, intent, and LLM repair result for voice debugging.
   - [ ] Add HUD settings for verbosity presets and voice mode.
   - [x] Includes typed chat only for test/debug use.
 
@@ -104,6 +105,7 @@ The Discord bot is the race radio: it listens to your headset in a private Disco
   - [x] “More fuel updates.”
 - [x] Urgent/proactive calls do not require a question.
 - [x] LLM adapter exists for natural phrasing, summaries, and flexible questions.
+- [x] LLM intent-repair path maps noisy transcripts to known deterministic commands.
 - [ ] Add live local/LAN LLM smoke tests and prompt regression coverage.
 - [ ] Validate spoken fuel, pit, lap, tire, and update commands during live driving.
 - [ ] Tune STT confidence and segmentation from more Discord headset samples.

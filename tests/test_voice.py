@@ -1,4 +1,5 @@
 from gt7eng.config import AppConfig
+from gt7eng.llm import IntentRepair
 from gt7eng.service import RaceEngineerService
 from gt7eng.telemetry import synthetic_frame
 
@@ -106,6 +107,37 @@ def test_quiet_driver_unknown_transcript_does_not_call_llm():
     assert result["intent"] == "unknown_quiet_driver"
 
 
+def test_quiet_driver_unknown_transcript_can_use_llm_intent_repair():
+    service = RaceEngineerService(AppConfig())
+    service.update_frame(synthetic_frame(current_position=7))
+    service.llm.repair_intent = lambda *_args, **_kwargs: IntentRepair(
+        "position", "what position am I", 0.84
+    )
+    service.llm.ask = lambda *_args, **_kwargs: (_ for _ in ()).throw(
+        AssertionError("Intent repair should not use free-form LLM answers")
+    )
+
+    result = service.handle_transcript("what spot did i get", "discord", confidence=0.7)
+
+    assert result["handled"] is True
+    assert result["intent"] == "position"
+    assert result["repair"]["intent"] == "position"
+    assert "P7" in result["response"]
+    assert service.status()["voice"]["last"]["repair"]["intent"] == "position"
+
+
+def test_low_confidence_llm_intent_repair_is_ignored():
+    service = RaceEngineerService(AppConfig())
+    service.llm.repair_intent = lambda *_args, **_kwargs: IntentRepair(
+        "position", "what position am I", 0.2
+    )
+
+    result = service.handle_transcript("what spot did i get", "discord", confidence=0.7)
+
+    assert result["ignored"] is True
+    assert result["intent"] == "unknown_quiet_driver"
+
+
 def test_wake_phrase_unknown_transcript_can_fall_back_to_llm():
     config = AppConfig(voice_mode="wake_phrase", wake_phrase="engineer")
     service = RaceEngineerService(config)
@@ -118,10 +150,36 @@ def test_wake_phrase_unknown_transcript_can_fall_back_to_llm():
     assert "race state" in result["response"]
 
 
-def test_low_confidence_transcript_is_ignored():
+def test_low_confidence_known_command_is_handled():
     config = AppConfig()
     config.stt.min_confidence = 0.8
     service = RaceEngineerService(config)
     result = service.handle_transcript("how is my fuel", "discord", confidence=0.2)
+    assert result["handled"] is True
+    assert result["intent"] == "fuel_status"
+
+
+def test_low_confidence_unknown_transcript_is_ignored():
+    config = AppConfig()
+    config.stt.min_confidence = 0.8
+    service = RaceEngineerService(config)
+    result = service.handle_transcript("something random", "discord", confidence=0.2)
     assert result["ignored"] is True
     assert result["intent"] == "low_confidence"
+
+
+def test_low_confidence_unknown_transcript_can_use_llm_intent_repair():
+    config = AppConfig()
+    config.stt.min_confidence = 0.8
+    service = RaceEngineerService(config)
+    service.update_frame(synthetic_frame(current_position=4))
+    service.llm.repair_intent = lambda *_args, **_kwargs: IntentRepair(
+        "position", "what position am I", 0.9
+    )
+
+    result = service.handle_transcript("what spot", "discord", confidence=0.2)
+
+    assert result["handled"] is True
+    assert result["intent"] == "position"
+    assert result["repair"]["intent"] == "position"
+    assert "P4" in result["response"]

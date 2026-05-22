@@ -5,6 +5,12 @@ from pathlib import Path
 
 from .config import STTConfig
 
+RACE_COMMAND_PROMPT = (
+    "Gran Turismo race engineer voice commands: fuel level, how is my fuel, "
+    "do I need to pit, box this lap, how much time left, how many laps left, "
+    "last lap, best lap, position, tires, give me an update, radio check."
+)
+
 
 class STTUnavailableError(RuntimeError):
     pass
@@ -42,11 +48,20 @@ class FasterWhisperSTT:
         self._model = WhisperModel(config.model, device=device, compute_type="int8")
 
     def transcribe(self, path: Path) -> STTResult:
+        result = self._transcribe_once(path, vad_filter=True)
+        if result.text:
+            return result
+        return self._transcribe_once(path, vad_filter=False)
+
+    def _transcribe_once(self, path: Path, *, vad_filter: bool) -> STTResult:
         segments, info = self._model.transcribe(
             str(path),
+            language="en",
             beam_size=1,
-            vad_filter=True,
+            vad_filter=vad_filter,
             condition_on_previous_text=False,
+            initial_prompt=RACE_COMMAND_PROMPT,
+            hotwords=RACE_COMMAND_PROMPT,
         )
         parts: list[str] = []
         confidences: list[float] = []
