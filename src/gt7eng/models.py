@@ -246,6 +246,7 @@ class RaceSnapshot:
     fuel_level: float | None = None
     fuel_capacity: float | None = None
     fuel_per_lap: float | None = None
+    fuel_sample_count: int = 0
     fuel_unit: str = "percent"
     fuel_laps_remaining: float | None = None
     fuel_margin_laps: float | None = None

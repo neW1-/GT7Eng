@@ -13,6 +13,7 @@ from .models import (
     TelemetryFrame,
     WheelValues,
 )
+from .timefmt import plural
 
 
 class RaceState:
@@ -49,6 +50,8 @@ class RaceState:
         self._packet_count += 1
         self._first_frame_time = self._first_frame_time or now
         phase = self._session_phase(frame)
+        if self._new_session_started(frame, phase):
+            self._reset_race_session()
         self._update_lifecycle(frame, phase)
 
         previous_snapshot = self._last_snapshot
@@ -123,7 +126,8 @@ class RaceState:
         phase: SessionPhase,
         incident_detected: str | None,
     ) -> RaceSnapshot:
-        fuel_per_lap = self._fuel_per_lap()
+        fuel_samples = self._fuel_samples()
+        fuel_per_lap = self._fuel_per_lap(fuel_samples)
         total_laps = _total_laps(frame.total_laps)
         race_mode = self._race_mode(frame, phase)
         laps_left = self._laps_left(frame.current_lap, total_laps)
@@ -143,6 +147,9 @@ class RaceState:
 
         average_lap = self._average_lap_time()
         best_lap = self._best_lap_record()
+        best_lap_time = (
+            best_lap.lap_time_ms if best_lap is not None else frame.best_lap_time_ms
+        )
         packet_rate = self._packet_rate()
         age = max(0.0, time.time() - frame.timestamp)
         tire_wear = self._tire_wear(frame)
@@ -162,15 +169,21 @@ class RaceState:
             current_position=frame.current_position,
             total_cars=frame.total_cars,
             last_lap_time_ms=frame.last_lap_time_ms,
-            best_lap_time_ms=frame.best_lap_time_ms,
+            best_lap_time_ms=best_lap_time,
             best_lap_number=best_lap.lap_number if best_lap is not None else None,
             average_lap_time_ms=average_lap,
             fuel_level=fuel_percent,
             fuel_capacity=100.0 if fuel_percent is not None else None,
             fuel_per_lap=fuel_per_lap,
+            fuel_sample_count=len(fuel_samples),
             fuel_laps_remaining=fuel_laps_remaining,
             fuel_margin_laps=fuel_margin,
-            pit_recommendation=self._pit_recommendation(fuel_laps_remaining, fuel_margin),
+            pit_recommendation=self._pit_recommendation(
+                fuel_laps_remaining,
+                fuel_margin,
+                fuel_percent,
+                len(fuel_samples),
+            ),
             speed_kph=frame.speed_kph,
             engine_rpm=frame.engine_rpm,
             current_gear=frame.current_gear,
@@ -195,12 +208,14 @@ class RaceState:
             lap_history=list(self.lap_history[-20:]),
         )
 
-    def _fuel_per_lap(self) -> float | None:
-        values = [
+    def _fuel_samples(self) -> list[float]:
+        return [
             lap.fuel_used
             for lap in self.lap_history[-5:]
             if lap.fuel_used is not None and lap.fuel_used > 0
         ]
+
+    def _fuel_per_lap(self, values: list[float]) -> float | None:
         if not values:
             return None
         return sum(values) / len(values)
@@ -283,6 +298,39 @@ class RaceState:
         if frame.current_lap is not None and frame.current_lap > 0:
             return "racing"
         return "menu"
+
+    def _new_session_started(self, frame: TelemetryFrame, phase: SessionPhase) -> bool:
+        last = self._last_frame
+        if last is None or phase not in {"racing", "paused"}:
+            return False
+        if frame.current_lap is None:
+            return False
+
+        if (
+            last.current_lap is not None
+            and last.current_lap > 1
+            and frame.current_lap <= 1
+        ):
+            return True
+
+        last_total = _total_laps(last.total_laps)
+        current_total = _total_laps(frame.total_laps)
+        if (
+            last_total is not None
+            and current_total is not None
+            and last_total != current_total
+            and frame.current_lap <= 1
+        ):
+            return True
+
+        last_fuel = _fuel_percent(last.fuel_level)
+        current_fuel = _fuel_percent(frame.fuel_level)
+        return (
+            frame.current_lap <= 1
+            and last_fuel is not None
+            and current_fuel is not None
+            and current_fuel - last_fuel >= 20.0
+        )
 
     def _update_lifecycle(self, frame: TelemetryFrame, phase: SessionPhase) -> None:
         if phase == "racing":
@@ -416,6 +464,8 @@ class RaceState:
         self,
         fuel_laps_remaining: float | None,
         fuel_margin: float | None,
+        fuel_level: float | None,
+        fuel_sample_count: int,
     ) -> str:
         if fuel_laps_remaining is None:
             return "Need one completed lap for fuel projection."
@@ -423,6 +473,11 @@ class RaceState:
             return "Fuel to the end is safe."
         if fuel_margin is not None and fuel_margin >= 0:
             return "Fuel tight. Save fuel to make the end."
+        if (
+            fuel_laps_remaining <= 2.0
+            and not _urgent_fuel_projection_confident(fuel_level, fuel_sample_count)
+        ):
+            return "Fuel projection unstable. Need another clean lap."
         if fuel_laps_remaining <= 1.0:
             return "Box this lap."
         if fuel_laps_remaining <= 2.0:
@@ -431,7 +486,7 @@ class RaceState:
             return f"Fuel for about {fuel_laps_remaining:.1f} laps. Race length unavailable."
         if fuel_margin < 0:
             safe_laps = max(1, int(fuel_laps_remaining - self.config.fuel_safety_laps))
-            return f"Pit required. Box within {safe_laps} laps."
+            return f"Pit required. Box within {plural(safe_laps, 'lap')}."
         return "Fuel to the end is safe."
 
     def _packet_rate(self) -> float:
@@ -458,3 +513,14 @@ def _total_laps(value: int | None) -> int | None:
     if value is None or value <= 0:
         return None
     return value
+
+
+def _urgent_fuel_projection_confident(
+    fuel_level: float | None,
+    fuel_sample_count: int,
+) -> bool:
+    if fuel_sample_count >= 2:
+        return True
+    if fuel_level is None:
+        return False
+    return fuel_level <= 25.0

@@ -159,6 +159,67 @@ def test_fuel_short_under_two_laps_warns_box_within_one_lap():
     assert any(alert.message == "Fuel low. Box within 1 lap." for alert in alerts)
 
 
+def test_lap_rewind_resets_stale_fuel_history_before_new_race():
+    service = RaceEngineerService(AppConfig())
+    service.update_frame(
+        synthetic_frame(timestamp=1.0, current_lap=1, total_laps=5, fuel_level=100.0)
+    )
+    service.update_frame(
+        synthetic_frame(
+            timestamp=2.0,
+            current_lap=2,
+            total_laps=5,
+            fuel_level=5.0,
+            last_lap_time_ms=80_000,
+            best_lap_time_ms=80_000,
+        )
+    )
+    assert round(service.snapshot.fuel_per_lap or 0, 1) == 95.0
+
+    service.update_frame(
+        synthetic_frame(timestamp=10.0, current_lap=1, total_laps=5, fuel_level=100.0)
+    )
+    alerts = service.update_frame(
+        synthetic_frame(
+            timestamp=11.0,
+            current_lap=2,
+            total_laps=5,
+            fuel_level=90.0,
+            last_lap_time_ms=80_000,
+            best_lap_time_ms=80_000,
+        )
+    )
+
+    assert service.snapshot.fuel_sample_count == 1
+    assert round(service.snapshot.fuel_per_lap or 0, 1) == 10.0
+    assert round(service.snapshot.fuel_laps_remaining or 0, 1) == 9.0
+    assert service.snapshot.pit_recommendation == "Fuel to the end is safe."
+    assert not any("Box this lap" in alert.message for alert in alerts)
+
+
+def test_high_fuel_single_unstable_projection_does_not_box_this_lap():
+    service = RaceEngineerService(AppConfig())
+    service.update_frame(
+        synthetic_frame(timestamp=1.0, current_lap=1, total_laps=5, fuel_level=100.0)
+    )
+
+    alerts = service.update_frame(
+        synthetic_frame(
+            timestamp=2.0,
+            current_lap=2,
+            total_laps=5,
+            fuel_level=70.0,
+            last_lap_time_ms=80_000,
+            best_lap_time_ms=80_000,
+        )
+    )
+
+    assert service.snapshot.fuel_sample_count == 1
+    assert round(service.snapshot.fuel_laps_remaining or 0, 1) == 2.3
+    assert service.snapshot.pit_recommendation == "Pit required. Box within 1 lap."
+    assert not any("Box this lap" in alert.message for alert in alerts)
+
+
 def test_first_lap_alert_uses_spoken_time_without_best_delta():
     service = RaceEngineerService(AppConfig())
     service.update_frame(
@@ -213,6 +274,70 @@ def test_slower_lap_alert_uses_rounded_spoken_delta_to_best():
     lap_message = next(alert.message for alert in alerts if alert.category == "lap")
     assert lap_message.startswith("Lap 2: 1:24.")
     assert "About 1 second to best." in lap_message
+
+
+def test_lap_alert_uses_lap_history_when_raw_best_is_missing_mid_lap():
+    service = RaceEngineerService(AppConfig())
+    service.update_frame(synthetic_frame(timestamp=1.0, current_lap=1, total_laps=5))
+    service.update_frame(
+        synthetic_frame(
+            timestamp=2.0,
+            current_lap=2,
+            total_laps=5,
+            last_lap_time_ms=82_999,
+            best_lap_time_ms=82_999,
+        )
+    )
+    service.update_frame(
+        synthetic_frame(
+            timestamp=2.5,
+            current_lap=2,
+            total_laps=5,
+            last_lap_time_ms=82_999,
+            best_lap_time_ms=-1,
+        )
+    )
+
+    alerts = service.update_frame(
+        synthetic_frame(
+            timestamp=3.0,
+            current_lap=3,
+            total_laps=5,
+            last_lap_time_ms=84_100,
+            best_lap_time_ms=84_100,
+        )
+    )
+
+    lap_message = next(alert.message for alert in alerts if alert.category == "lap")
+    assert lap_message.startswith("Lap 2: 1:24.")
+    assert "About 1 second to best." in lap_message
+
+
+def test_snapshot_best_lap_prefers_completed_lap_history():
+    service = RaceEngineerService(AppConfig())
+    service.update_frame(synthetic_frame(timestamp=1.0, current_lap=1, total_laps=5))
+    service.update_frame(
+        synthetic_frame(
+            timestamp=2.0,
+            current_lap=2,
+            total_laps=5,
+            last_lap_time_ms=82_999,
+            best_lap_time_ms=82_999,
+        )
+    )
+    service.update_frame(
+        synthetic_frame(
+            timestamp=3.0,
+            current_lap=3,
+            total_laps=5,
+            last_lap_time_ms=84_100,
+            best_lap_time_ms=84_100,
+        )
+    )
+
+    assert service.snapshot.best_lap_time_ms == 82_999
+    assert service.snapshot.best_lap_number == 1
+    assert service.snapshot.to_dict()["best_lap_time"] == "1:22.999"
 
 
 def test_new_best_lap_alert_announces_improvement():

@@ -51,6 +51,8 @@ The Discord bot is the race radio: it listens to your headset in a private Disco
   - [x] Current position and total cars.
   - [x] Fuel level, fuel capacity, fuel used per lap, projected laps remaining.
   - [x] Treat GT7 fuel as percent-based telemetry, not liters.
+  - [x] Reset stale fuel history immediately when retry/new-session telemetry rewinds to lap 1 or fuel jumps back up.
+  - [x] Guard urgent fuel warnings until enough clean lap samples exist, unless fuel level is genuinely low.
   - [x] Split fuel range into current-stint range and finish margin for pit strategy.
   - [x] Tire temps, wheel speeds, suspension height, engine/oil/water data.
   - [x] Motion, rotation, angular velocity, tire radius, TCS/ASM, handbrake, rev-limit, and in-gear flags.
@@ -68,6 +70,7 @@ The Discord bot is the race radio: it listens to your headset in a private Disco
   - [x] Position changes: “P3.” / “Lost one, now P4.”
   - [x] Coalesce rapid position changes into one net alert, e.g. “Gained 3 places, now P10.”
   - [x] Lap-end summaries: lap time, delta to best, laps left.
+  - [x] Spoken lap alerts compare against completed-lap history, not unstable raw GT7 best-lap packet data.
   - [x] Timed/endurance race updates: lap plus time remaining instead of “lap X of 0.”
   - [x] Timed/endurance countdown uses active racing time and stops while paused.
   - [x] Fuel: stint laps remaining, finish margin, fuel critical.
@@ -172,6 +175,10 @@ The Discord bot is the race radio: it listens to your headset in a private Disco
 - [x] 2026-05-22: Proactive position alerts played through Discord voice without an LLM.
 - [x] 2026-05-22: Driver headset audio incremented Discord receive packet counters.
 - [x] 2026-05-22: `faster-whisper` `tiny.en` transcribed a spoken position question and the bot answered through Discord.
+- [x] 2026-05-23: `faster-whisper` `base.en` was downloaded, preloaded, and configured for live Discord STT testing.
+- [x] 2026-05-23: Retry/new-session fuel reset and unstable-projection fuel guard were implemented for rapid retry testing.
+- [x] 2026-05-23: Lap alerts were confirmed in the alert feed and Discord bridge acknowledgements.
+- [x] 2026-05-23: Lap/best-lap alerts were fixed to use completed-lap history for spoken deltas and HUD best-lap consistency.
 - [ ] Full short-race validation with lap summaries, final lap, and finish behavior.
 - [ ] Endurance-style stint validation with fuel burn, pit advice, and fuel-margin calls.
 - [ ] Live validation of every supported spoken command.
@@ -205,6 +212,8 @@ The Discord bot is the race radio: it listens to your headset in a private Disco
   - [x] Position-change detection.
   - [x] Fuel burn and pit recommendation.
   - [x] Pit urgency rules for “pit required,” “box within 1 lap,” and “box this lap.”
+  - [x] Retry/new-session fuel-history reset and unstable fuel-projection suppression.
+  - [x] Spoken lap delta logic against completed-lap history.
   - [x] Alert cooldowns and verbosity.
   - [x] Session phase, tire wear, incident, driving-style, STT transcript, and audio-status API behavior.
 - Replay tests:

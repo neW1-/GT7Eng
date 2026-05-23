@@ -111,9 +111,7 @@ class AlertManager:
         snap = update.snapshot
         lap = update.completed_lap
         lap_time = _valid_lap_time(lap.lap_time_ms)
-        previous_best = _valid_lap_time(
-            update.previous.best_lap_time_ms if update.previous is not None else None
-        )
+        previous_best = _previous_best_lap_time(update)
         parts = [f"Lap {lap.lap_number}: {format_spoken_lap_time(lap_time)}."]
         if lap_time is not None and previous_best is not None:
             delta = lap_time - previous_best
@@ -184,6 +182,13 @@ class AlertManager:
             alerts.append(
                 self._alert("fuel", "important", "Fuel tight. Save fuel to make the end.")
             )
+        elif (
+            stint_laps is not None
+            and stint_laps <= 2.0
+            and not _urgent_fuel_projection_confident(snapshot)
+        ):
+            if margin is not None and margin < 0 and self._allowed("fuel_projection_unstable", 90):
+                alerts.append(self._alert("fuel", "info", snapshot.pit_recommendation))
         elif stint_laps is not None and stint_laps <= 1.0 and self._allowed("fuel_critical", 20):
             alerts.append(self._alert("fuel", "critical", "Fuel critical. Box this lap."))
         elif stint_laps is not None and stint_laps <= 2.0 and self._allowed("fuel_low", 45):
@@ -324,7 +329,36 @@ def _valid_lap_time(milliseconds: int | None) -> int | None:
     return milliseconds
 
 
+def _previous_best_lap_time(update: StateUpdate) -> int | None:
+    completed = update.completed_lap
+    if completed is None:
+        return None
+    values = [
+        lap.lap_time_ms
+        for lap in update.snapshot.lap_history
+        if lap is not completed
+        and not (
+            lap.lap_number == completed.lap_number
+            and lap.completed_at == completed.completed_at
+        )
+        and _valid_lap_time(lap.lap_time_ms) is not None
+    ]
+    if values:
+        return min(value for value in values if value is not None)
+    if update.previous is None:
+        return None
+    return _valid_lap_time(update.previous.best_lap_time_ms)
+
+
 def _sentence_start(text: str) -> str:
     if not text:
         return text
     return text[0].upper() + text[1:]
+
+
+def _urgent_fuel_projection_confident(snapshot: RaceSnapshot) -> bool:
+    if snapshot.fuel_sample_count >= 2:
+        return True
+    if snapshot.fuel_level is None:
+        return False
+    return snapshot.fuel_level <= 25.0

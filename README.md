@@ -23,6 +23,8 @@ Local Gran Turismo 7 race engineer for macOS. It auto-discovers the PS5 via `gt-
 - [x] Coalesce rapid position changes into one net alert before speaking.
 - [x] Timed/endurance race mode avoids “lap X of 0” and supports time-remaining voice responses.
 - [x] Timed/endurance countdown freezes while GT7 telemetry reports the session is paused.
+- [x] Retry/new-session detection resets stale fuel history before the next race stint.
+- [x] Spoken lap/best-lap alerts use completed-lap history instead of unstable raw packet best-lap data.
 - [x] Voice debug HUD shows transcript, confidence, intent, and LLM repair status.
 - [x] Optional LLM intent repair maps noisy voice transcripts to deterministic commands.
 
@@ -41,6 +43,8 @@ Local Gran Turismo 7 race engineer for macOS. It auto-discovers the PS5 via `gt-
 - [x] Add live Discord end-to-end STT test with a private server, configured driver user, and headset.
 - [x] Add live GT7 validation with PS5 auto-discovery, packet-rate monitoring, and on-track telemetry.
 - [x] Update fuel/pit strategy wording so negative finish margin does not always mean “box this lap.”
+- [x] Guard urgent fuel calls until the projection has enough clean lap samples, unless fuel is genuinely low.
+- [x] Keep HUD best-lap timing tied to completed lap history once laps are recorded.
 - [ ] Add full short-race/endurance validation, replay comparison, and alert tuning.
 - [ ] Validate spoken fuel, pit, lap, tire, and update commands during an active stint.
 - [ ] Tune Discord STT confidence, segment timing, and false-positive suppression from more headset samples.
@@ -145,13 +149,21 @@ Live validation notes from 2026-05-22:
 - `GT7ENG_STT_MIN_CONFIDENCE=0.45` worked better than the default `0.55` for this Discord headset test.
 - Timed/endurance race testing confirmed `total_laps=0` is handled as timed mode, the HUD shows duration/time left, and the countdown freezes while paused.
 
+Live validation notes from 2026-05-23:
+
+- `faster-whisper` `base.en` was downloaded, preloaded, and configured for local Discord STT testing on the 16 GB M4 Mac.
+- Fuel strategy now resets stale fuel history when retry/new-session telemetry rewinds to lap 1 or fuel jumps back up.
+- Fuel strategy now suppresses urgent “box this lap” calls when the projection is based on only one high-fuel sample.
+- Lap alerts were confirmed in the alert feed and Discord voice job acknowledgements.
+- Lap/best-lap logic now prefers completed-lap history, so spoken deltas and HUD best-lap data are not thrown off by unstable raw GT7 best-lap packets.
+
 ## Audio Configuration
 
 STT is optional and off by default:
 
 ```bash
 GT7ENG_STT_ENABLED=true
-GT7ENG_STT_MODEL=tiny.en
+GT7ENG_STT_MODEL=base.en
 GT7ENG_STT_DEVICE=auto
 DISCORD_STT_ENABLED=true
 ```
@@ -183,11 +195,11 @@ GT7ENG_LLM_INTENT_REPAIR=true
 GT7ENG_LLM_INTENT_REPAIR_MIN_CONFIDENCE=0.55
 ```
 
-Keep STT light while Discord, the HUD, TTS, and telemetry are all running:
+Keep STT reasonably light while Discord, the HUD, TTS, and telemetry are all running. On the current 16 GB M4 test machine, `base.en` is the next model to try for better headset transcription; drop back to `tiny.en` if latency becomes noticeable:
 
 ```bash
 GT7ENG_STT_ENABLED=true
-GT7ENG_STT_MODEL=tiny.en
+GT7ENG_STT_MODEL=base.en
 GT7ENG_STT_DEVICE=cpu
 GT7ENG_STT_MIN_CONFIDENCE=0.45
 DISCORD_STT_ENABLED=true
