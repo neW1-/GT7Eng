@@ -165,14 +165,32 @@ class AlertManager:
         if not self.config.category_enabled("fuel", "critical"):
             return []
         margin = snapshot.fuel_margin_laps
+        stint_laps = snapshot.fuel_laps_remaining
         alerts: list[Alert] = []
-        if margin is not None:
-            if margin < 0 and self._allowed("fuel_critical", 20):
-                alerts.append(self._alert("fuel", "critical", "Fuel critical. Box this lap."))
-            elif margin < self.config.fuel_safety_laps and self._allowed("fuel_tight", 45):
+        if margin is not None and margin >= self.config.fuel_safety_laps:
+            if (
+                completed
+                and self.config.category_enabled("fuel", "detailed")
+                and stint_laps is not None
+            ):
                 alerts.append(
-                    self._alert("fuel", "important", "Fuel is tight. Save fuel or box soon.")
+                    self._alert(
+                        "fuel",
+                        "info",
+                        f"Fuel for {stint_laps:.1f} laps, margin {margin:.1f}.",
+                    )
                 )
+        elif margin is not None and margin >= 0 and self._allowed("fuel_tight", 45):
+            alerts.append(
+                self._alert("fuel", "important", "Fuel tight. Save fuel to make the end.")
+            )
+        elif stint_laps is not None and stint_laps <= 1.0 and self._allowed("fuel_critical", 20):
+            alerts.append(self._alert("fuel", "critical", "Fuel critical. Box this lap."))
+        elif stint_laps is not None and stint_laps <= 2.0 and self._allowed("fuel_low", 45):
+            alerts.append(self._alert("fuel", "important", "Fuel low. Box within 1 lap."))
+        elif margin is not None:
+            if margin < 0 and self._allowed("fuel_short", 90):
+                alerts.append(self._alert("fuel", "important", snapshot.pit_recommendation))
             elif (
                 completed
                 and self.config.category_enabled("fuel", "detailed")

@@ -56,6 +56,109 @@ def test_lap_position_and_fuel_projection_alerts():
     assert snapshot.to_dict()["fuel_per_lap_percent"] == 10.0
 
 
+def test_fuel_short_does_not_force_box_this_lap_when_stint_has_range():
+    service = RaceEngineerService(AppConfig())
+    service.update_frame(
+        synthetic_frame(
+            timestamp=1.0,
+            current_lap=1,
+            total_laps=10,
+            fuel_level=54.0,
+            last_lap_time_ms=-1,
+            best_lap_time_ms=-1,
+        )
+    )
+
+    alerts = service.update_frame(
+        synthetic_frame(
+            timestamp=2.0,
+            current_lap=2,
+            total_laps=10,
+            fuel_level=44.0,
+            last_lap_time_ms=80_000,
+            best_lap_time_ms=80_000,
+        )
+    )
+
+    snapshot = service.snapshot
+    assert round(snapshot.fuel_laps_remaining or 0, 1) == 4.4
+    assert round(snapshot.fuel_margin_laps or 0, 1) == -4.6
+    assert snapshot.pit_recommendation == "Pit required. Box within 3 laps."
+    assert "Box this lap" not in snapshot.pit_recommendation
+    assert any(
+        alert.category == "fuel" and alert.message == "Pit required. Box within 3 laps."
+        for alert in alerts
+    )
+
+
+def test_fuel_low_boxes_this_lap_only_when_stint_is_almost_empty():
+    service = RaceEngineerService(AppConfig())
+    service.update_frame(
+        synthetic_frame(timestamp=1.0, current_lap=1, total_laps=5, fuel_level=18.0)
+    )
+
+    alerts = service.update_frame(
+        synthetic_frame(
+            timestamp=2.0,
+            current_lap=2,
+            total_laps=5,
+            fuel_level=8.0,
+            last_lap_time_ms=80_000,
+            best_lap_time_ms=80_000,
+        )
+    )
+
+    assert round(service.snapshot.fuel_laps_remaining or 0, 1) == 0.8
+    assert service.snapshot.pit_recommendation == "Box this lap."
+    assert any(alert.message == "Fuel critical. Box this lap." for alert in alerts)
+
+
+def test_fuel_can_finish_takes_precedence_over_short_stint_warning():
+    service = RaceEngineerService(AppConfig())
+    service.update_frame(
+        synthetic_frame(timestamp=1.0, current_lap=1, total_laps=2, fuel_level=26.0)
+    )
+
+    alerts = service.update_frame(
+        synthetic_frame(
+            timestamp=2.0,
+            current_lap=2,
+            total_laps=2,
+            fuel_level=16.0,
+            last_lap_time_ms=80_000,
+            best_lap_time_ms=80_000,
+        )
+    )
+
+    assert round(service.snapshot.fuel_laps_remaining or 0, 1) == 1.6
+    assert round(service.snapshot.fuel_margin_laps or 0, 1) == 0.6
+    assert service.snapshot.pit_recommendation == "Fuel to the end is safe."
+    assert not any("Box within 1 lap" in alert.message for alert in alerts)
+
+
+def test_fuel_short_under_two_laps_warns_box_within_one_lap():
+    service = RaceEngineerService(AppConfig())
+    service.update_frame(
+        synthetic_frame(timestamp=1.0, current_lap=1, total_laps=5, fuel_level=26.0)
+    )
+
+    alerts = service.update_frame(
+        synthetic_frame(
+            timestamp=2.0,
+            current_lap=2,
+            total_laps=5,
+            fuel_level=16.0,
+            last_lap_time_ms=80_000,
+            best_lap_time_ms=80_000,
+        )
+    )
+
+    assert round(service.snapshot.fuel_laps_remaining or 0, 1) == 1.6
+    assert round(service.snapshot.fuel_margin_laps or 0, 1) == -2.4
+    assert service.snapshot.pit_recommendation == "Box within 1 lap."
+    assert any(alert.message == "Fuel low. Box within 1 lap." for alert in alerts)
+
+
 def test_first_lap_alert_uses_spoken_time_without_best_delta():
     service = RaceEngineerService(AppConfig())
     service.update_frame(

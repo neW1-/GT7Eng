@@ -19,6 +19,7 @@ Local Gran Turismo 7 race engineer for macOS. It auto-discovers the PS5 via `gt-
 - [x] Live Discord voice join, radio-check playback, and proactive position-alert playback.
 - [x] Live Discord driver-audio receive, `tiny.en` STT, and spoken position Q&A round trip.
 - [x] Treat GT7 fuel as percent-based telemetry, not liters.
+- [x] Pit advice separates “pit required eventually” from “box this lap” urgency.
 - [x] Coalesce rapid position changes into one net alert before speaking.
 - [x] Timed/endurance race mode avoids “lap X of 0” and supports time-remaining voice responses.
 - [x] Timed/endurance countdown freezes while GT7 telemetry reports the session is paused.
@@ -39,6 +40,7 @@ Local Gran Turismo 7 race engineer for macOS. It auto-discovers the PS5 via `gt-
 - [x] Add stricter command grammar and confidence thresholds for `quiet_driver` mode.
 - [x] Add live Discord end-to-end STT test with a private server, configured driver user, and headset.
 - [x] Add live GT7 validation with PS5 auto-discovery, packet-rate monitoring, and on-track telemetry.
+- [x] Update fuel/pit strategy wording so negative finish margin does not always mean “box this lap.”
 - [ ] Add full short-race/endurance validation, replay comparison, and alert tuning.
 - [ ] Validate spoken fuel, pit, lap, tire, and update commands during an active stint.
 - [ ] Tune Discord STT confidence, segment timing, and false-positive suppression from more headset samples.
@@ -74,6 +76,15 @@ gt7eng run --host 0.0.0.0 --port 8001
 Open `http://localhost:8001` for the HUD. Live GT7 telemetry requires GT7 telemetry enabled, PS5 and Mac on the same LAN, and inbound UDP `33740` allowed by macOS firewall.
 
 Fuel note: GT7 fuel is treated as percentage. `fuel_level=100.0` means a full tank, not 100 liters; fuel-per-lap is percentage points consumed per lap.
+
+Fuel strategy note: the HUD separates current-stint range from finish margin:
+
+- `Stint` is how many laps the current fuel load is projected to last.
+- `To Finish` is the projected fuel margin versus the remaining race distance.
+- A negative `To Finish` means a stop is required before the end, not necessarily this lap.
+- `Box this lap` is reserved for genuinely urgent fuel range, currently when projected stint range is about one lap or less.
+
+For example, `Stint 4.4` and `To Finish -4.6` means the current fuel can last about 4.4 laps but is 4.6 laps short of finishing. The recommendation should be `Pit required. Box within 3 laps.`, not `Box this lap.`
 
 Position note: rapid position changes are coalesced before being shown/spoken. By default, the engineer waits `1.5s` for the position to settle, so a quick move from P13 to P10 becomes “Gained 3 places, now P10.” Tune with `GT7ENG_POSITION_COALESCE_SECONDS`.
 

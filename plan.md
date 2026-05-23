@@ -51,6 +51,7 @@ The Discord bot is the race radio: it listens to your headset in a private Disco
   - [x] Current position and total cars.
   - [x] Fuel level, fuel capacity, fuel used per lap, projected laps remaining.
   - [x] Treat GT7 fuel as percent-based telemetry, not liters.
+  - [x] Split fuel range into current-stint range and finish margin for pit strategy.
   - [x] Tire temps, wheel speeds, suspension height, engine/oil/water data.
   - [x] Motion, rotation, angular velocity, tire radius, TCS/ASM, handbrake, rev-limit, and in-gear flags.
   - [x] Track ID/name once detected.
@@ -69,9 +70,9 @@ The Discord bot is the race radio: it listens to your headset in a private Disco
   - [x] Lap-end summaries: lap time, delta to best, laps left.
   - [x] Timed/endurance race updates: lap plus time remaining instead of “lap X of 0.”
   - [x] Timed/endurance countdown uses active racing time and stops while paused.
-  - [x] Fuel: laps remaining, fuel margin, fuel critical.
+  - [x] Fuel: stint laps remaining, finish margin, fuel critical.
   - [ ] Fuel-save target calls.
-  - [x] Pit advice: “Box this lap,” “Fuel to the end is safe.”
+  - [x] Pit advice distinguishes “pit required eventually” from “box this lap” urgency.
   - [x] Tire/car health: tire temp imbalance, overheating, oil/water warnings.
   - [x] System status: telemetry connected/lost, packet stale.
   - [ ] PS5-not-found spoken setup guidance during live startup.
@@ -155,7 +156,7 @@ The Discord bot is the race radio: it listens to your headset in a private Disco
 - HUD:
   - [x] Live connection status and packet rate.
   - [x] Current lap, laps left, position, last/best lap.
-  - [x] Fuel laps remaining, fuel margin, pit recommendation.
+  - [x] Fuel stint range, finish margin, and pit recommendation.
   - [x] Tire temps and car health via API; compact car panel in HUD.
   - [x] Session phase, STT/TTS status, tire wear estimate, incident, and driving-style panels.
   - [x] Alert feed.
@@ -177,7 +178,7 @@ The Discord bot is the race radio: it listens to your headset in a private Disco
 
 ## Next Work Plan
 - [ ] Run a full short race and capture/replay it to tune lap, position, and finish alerts.
-- [ ] Run a longer fuel-burning stint and tune fuel-per-lap, fuel margin, and pit-call wording.
+- [ ] Run a longer fuel-burning stint and validate fuel-per-lap, finish margin, and pit-call timing against real GT7 behavior.
 - [ ] Test all spoken command intents over Discord: fuel, pit, laps left, last lap, best lap, tires, update, quiet, and more fuel updates.
 - [ ] Add HUD controls for preset, category verbosity, voice mode, mute, and STT status.
 - [ ] Add Discord bridge status to the HUD, including connected channel, packet counter, last transcript, and last intent.
@@ -203,6 +204,7 @@ The Discord bot is the race radio: it listens to your headset in a private Disco
   - [x] Lap/laps-left logic.
   - [x] Position-change detection.
   - [x] Fuel burn and pit recommendation.
+  - [x] Pit urgency rules for “pit required,” “box within 1 lap,” and “box this lap.”
   - [x] Alert cooldowns and verbosity.
   - [x] Session phase, tire wear, incident, driving-style, STT transcript, and audio-status API behavior.
 - Replay tests:

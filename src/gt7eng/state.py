@@ -170,7 +170,7 @@ class RaceState:
             fuel_per_lap=fuel_per_lap,
             fuel_laps_remaining=fuel_laps_remaining,
             fuel_margin_laps=fuel_margin,
-            pit_recommendation=self._pit_recommendation(fuel_margin),
+            pit_recommendation=self._pit_recommendation(fuel_laps_remaining, fuel_margin),
             speed_kph=frame.speed_kph,
             engine_rpm=frame.engine_rpm,
             current_gear=frame.current_gear,
@@ -412,13 +412,26 @@ class RaceState:
             self._last_incident = incident
         return incident
 
-    def _pit_recommendation(self, fuel_margin: float | None) -> str:
-        if fuel_margin is None:
+    def _pit_recommendation(
+        self,
+        fuel_laps_remaining: float | None,
+        fuel_margin: float | None,
+    ) -> str:
+        if fuel_laps_remaining is None:
             return "Need one completed lap for fuel projection."
+        if fuel_margin is not None and fuel_margin >= self.config.fuel_safety_laps:
+            return "Fuel to the end is safe."
+        if fuel_margin is not None and fuel_margin >= 0:
+            return "Fuel tight. Save fuel to make the end."
+        if fuel_laps_remaining <= 1.0:
+            return "Box this lap."
+        if fuel_laps_remaining <= 2.0:
+            return "Box within 1 lap."
+        if fuel_margin is None:
+            return f"Fuel for about {fuel_laps_remaining:.1f} laps. Race length unavailable."
         if fuel_margin < 0:
-            return "Fuel short. Box this lap."
-        if fuel_margin < self.config.fuel_safety_laps:
-            return "Fuel tight. Prepare to box or save fuel."
+            safe_laps = max(1, int(fuel_laps_remaining - self.config.fuel_safety_laps))
+            return f"Pit required. Box within {safe_laps} laps."
         return "Fuel to the end is safe."
 
     def _packet_rate(self) -> float:
