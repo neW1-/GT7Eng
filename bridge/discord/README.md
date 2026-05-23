@@ -114,6 +114,8 @@ POST /api/discord/audio
 
 The Python service owns transcription and command handling. In `quiet_driver` mode, unknown speech can use the configured LLM only as a structured intent-repair layer that maps noisy transcripts to known deterministic commands. In `quiet_driver_ai` mode, strict commands and intent repair still run first, then high-confidence unknown speech can fall through to the configured LLM for race-state Q&A. Wake-phrase mode can also fall back to the configured LLM after the wake phrase.
 
+The Python service also keeps one short-turn memory fact for 60 seconds after deterministic answers. This lets immediate follow-ups resolve naturally, for example “What’s my best lap?” followed by “Which lap was that?”, or “How much fuel did I use last lap?” followed by “What lap was that?”. Deterministic follow-up parsing runs before LLM fallback. If deterministic handling cannot answer a conversational follow-up such as “why?”, the recent memory snapshot is included in the LLM payload with the current race state. In `wake_phrase` mode, follow-ups still require the wake phrase.
+
 Playback pauses active receive streams so the bot does not transcribe its own race-radio output.
 
 Driver requests take priority over queued alerts. When a speech segment is submitted to Python, the bridge clears pending local audio, pauses voice-job polling while the Python service handles the command or LLM request, then immediately polls for the answer. This prevents stale telemetry or other proactive alerts from speaking over a conversational response.

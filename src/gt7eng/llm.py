@@ -45,9 +45,22 @@ class OpenAICompatibleClient:
     def available(self) -> bool:
         return bool(self.config.base_url and self.config.model)
 
-    def ask(self, question: str, snapshot: RaceSnapshot) -> str:
+    def ask(
+        self,
+        question: str,
+        snapshot: RaceSnapshot,
+        conversation_context: dict | None = None,
+    ) -> str:
         if not self.available():
             return "LLM is not configured. I can still answer core race commands."
+
+        user_content = {
+            "race_state": snapshot.to_dict(),
+            "request_context": _request_context(),
+            "question": question,
+        }
+        if conversation_context is not None:
+            user_content["conversation_context"] = conversation_context
 
         payload = {
             "model": self.config.model,
@@ -65,14 +78,7 @@ class OpenAICompatibleClient:
                 },
                 {
                     "role": "user",
-                    "content": json.dumps(
-                        {
-                            "race_state": snapshot.to_dict(),
-                            "request_context": _request_context(),
-                            "question": question,
-                        },
-                        separators=(",", ":"),
-                    ),
+                    "content": json.dumps(user_content, separators=(",", ":")),
                 },
             ],
             "max_tokens": self.config.max_tokens,

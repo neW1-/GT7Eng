@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import re
 import time
 from collections import deque
 from dataclasses import dataclass
@@ -11,6 +12,7 @@ from .llm import IntentRepair, OpenAICompatibleClient
 from .models import Alert, RaceSnapshot, TelemetryFrame
 from .state import RaceState
 from .telemetry import CaptureWriter, TelemetrySource
+from .timefmt import format_spoken_delta
 from .voice import VoiceResult, parse_voice_command
 
 
@@ -32,12 +34,158 @@ class VoiceJob:
         }
 
 
+@dataclass(slots=True)
+class ConversationFact:
+    intent: str
+    question: str
+    response: str
+    data: dict[str, object]
+    created_at: float
+
+    def to_dict(self, now: float) -> dict:
+        return {
+            "intent": self.intent,
+            "question": self.question,
+            "response": self.response,
+            "age_seconds": max(0.0, now - self.created_at),
+            "data": self.data,
+        }
+
+
+class ConversationMemory:
+    def __init__(self, ttl_seconds: float = 60.0):
+        self.ttl_seconds = ttl_seconds
+        self._fact: ConversationFact | None = None
+
+    def remember(
+        self,
+        intent: str,
+        question: str,
+        response: str,
+        data: dict[str, object] | None,
+        *,
+        now: float | None = None,
+    ) -> None:
+        if not data:
+            self.clear()
+            return
+        timestamp = time.time() if now is None else now
+        self._fact = ConversationFact(
+            intent=intent,
+            question=question,
+            response=response,
+            data=data,
+            created_at=timestamp,
+        )
+
+    def clear(self) -> None:
+        self._fact = None
+
+    def current(self, now: float | None = None) -> ConversationFact | None:
+        if self._fact is None:
+            return None
+        timestamp = time.time() if now is None else now
+        if timestamp - self._fact.created_at > self.ttl_seconds:
+            self.clear()
+            return None
+        return self._fact
+
+    def snapshot(self, now: float | None = None) -> dict | None:
+        timestamp = time.time() if now is None else now
+        fact = self.current(timestamp)
+        return fact.to_dict(timestamp) if fact is not None else None
+
+    def resolve_follow_up(
+        self,
+        text: str,
+        snapshot: RaceSnapshot,
+        *,
+        now: float | None = None,
+    ) -> VoiceResult | None:
+        normalized = _normalize_memory_text(text)
+        if not _looks_like_follow_up(normalized):
+            return None
+
+        fact = self.current(now)
+        if fact is None:
+            return VoiceResult(
+                True,
+                False,
+                "follow_up_unavailable",
+                "I need a recent answer to refer back to.",
+                0.45,
+            )
+
+        if _asks_which_lap(normalized):
+            lap_number = fact.data.get("lap_number")
+            if isinstance(lap_number, int) and lap_number > 0:
+                return VoiceResult(
+                    True,
+                    False,
+                    "follow_up_lap",
+                    f"That was lap {lap_number}.",
+                    1.0,
+                )
+            return VoiceResult(
+                True,
+                False,
+                "follow_up_unavailable",
+                "That did not refer to a specific lap.",
+                0.7,
+            )
+
+        if _asks_sample_count(normalized):
+            sample_count = fact.data.get("fuel_sample_count")
+            if isinstance(sample_count, int) and sample_count > 0:
+                plural = "sample" if sample_count == 1 else "samples"
+                return VoiceResult(
+                    True,
+                    False,
+                    "follow_up_sample_count",
+                    f"That is based on {sample_count} completed fuel {plural}.",
+                    1.0,
+                )
+
+        if _asks_total_cars(normalized):
+            total_cars = fact.data.get("total_cars") or snapshot.total_cars
+            if isinstance(total_cars, int) and total_cars > 0:
+                return VoiceResult(
+                    True,
+                    False,
+                    "follow_up_total_cars",
+                    f"{total_cars} cars total.",
+                    1.0,
+                )
+
+        if _asks_how_much_that(normalized):
+            response = _amount_response(fact)
+            if response is not None:
+                return VoiceResult(True, False, "follow_up_amount", response, 1.0)
+
+        if _asks_faster_than_best(normalized):
+            response = _faster_than_best_response(fact, snapshot)
+            if response is not None:
+                return VoiceResult(True, False, "follow_up_best_delta", response, 1.0)
+
+        if _asks_repeat(normalized):
+            return VoiceResult(
+                True,
+                False,
+                "follow_up_repeat",
+                f"I said: {fact.response}",
+                1.0,
+            )
+
+        return None
+
+
 class RaceEngineerService:
     def __init__(self, config: AppConfig):
         self.config = config
         self.state = RaceState(config)
         self.alerts = AlertManager(config)
         self.llm = OpenAICompatibleClient(config.llm)
+        self.conversation_memory = ConversationMemory()
         self.alert_log: deque[Alert] = deque(maxlen=500)
         self.voice_jobs: deque[VoiceJob] = deque(maxlen=500)
         self.acked_voice_jobs: set[str] = set()
@@ -84,12 +232,19 @@ class RaceEngineerService:
     def handle_command(self, text: str, source: str = "text") -> dict:
         self._prepare_for_driver_request(source)
         snapshot = self._snapshot_for_request(source)
+        follow_up = self._resolve_follow_up(text, snapshot)
+        if follow_up is not None:
+            response = self._command_response(text, follow_up, source)
+            self._queue_response_voice_job(response)
+            return response
+
         result = parse_voice_command(text, snapshot, self.config)
         if result.ignored:
             return self._command_response(text, result, source)
         if result.handled:
             self._apply_intent(result)
             response = self._command_response(text, result, source)
+            self._remember_response(text, result, response, snapshot)
             self._queue_response_voice_job(response)
             return response
 
@@ -97,9 +252,14 @@ class RaceEngineerService:
         if repaired is not None:
             return repaired
 
-        answer = self.llm.ask(text, snapshot)
+        answer = self.llm.ask(
+            text,
+            snapshot,
+            conversation_context=self.conversation_memory.snapshot(),
+        )
         result = VoiceResult(True, False, "llm_question", answer, 0.5)
         response = self._command_response(text, result, source)
+        self.conversation_memory.clear()
         self._queue_response_voice_job(response)
         return response
 
@@ -115,12 +275,19 @@ class RaceEngineerService:
 
         self._prepare_for_driver_request(source)
         snapshot = self._snapshot_for_request(source)
+        follow_up = self._resolve_follow_up(text, snapshot)
+        if follow_up is not None:
+            response = self._command_response(text, follow_up, source)
+            self._queue_response_voice_job(response)
+            return response
+
         result = parse_voice_command(text, snapshot, self.config)
         if result.ignored:
             return self._command_response(text, result, source)
         if result.handled:
             self._apply_intent(result)
             response = self._command_response(text, result, source)
+            self._remember_response(text, result, response, snapshot)
             self._queue_response_voice_job(response)
             return response
 
@@ -136,9 +303,14 @@ class RaceEngineerService:
             ignored = VoiceResult(False, True, "unknown_quiet_driver", "", result.confidence)
             return self._command_response(text, ignored, source)
 
-        answer = self.llm.ask(text, snapshot)
+        answer = self.llm.ask(
+            text,
+            snapshot,
+            conversation_context=self.conversation_memory.snapshot(),
+        )
         result = VoiceResult(True, False, "llm_question", answer, 0.5)
         response = self._command_response(text, result, source)
+        self.conversation_memory.clear()
         self._queue_response_voice_job(response)
         return response
 
@@ -162,6 +334,7 @@ class RaceEngineerService:
                 "muted": self._muted,
                 "stt_enabled": self.config.stt.enabled,
                 "last": self._last_voice_debug,
+                "memory": self.conversation_memory.snapshot(),
             },
             "config": {
                 "preset": self.config.preset,
@@ -271,6 +444,7 @@ class RaceEngineerService:
                 "confidence": repair.confidence,
             },
         )
+        self._remember_response(text, result, response, snapshot)
         self._queue_response_voice_job(response)
         return response
 
@@ -291,6 +465,32 @@ class RaceEngineerService:
         if source == "discord":
             return self.state.stale_snapshot()
         return self.snapshot
+
+    def _resolve_follow_up(self, text: str, snapshot: RaceSnapshot) -> VoiceResult | None:
+        follow_up_text = text
+        if self.config.voice_mode == "wake_phrase":
+            normalized = _normalize_memory_text(text)
+            phrase = _normalize_memory_text(self.config.wake_phrase)
+            if not normalized.startswith(phrase):
+                return None
+            follow_up_text = normalized[len(phrase) :].strip(" ,")
+        return self.conversation_memory.resolve_follow_up(follow_up_text, snapshot)
+
+    def _remember_response(
+        self,
+        text: str,
+        result: VoiceResult,
+        response: dict,
+        snapshot: RaceSnapshot,
+    ) -> None:
+        if result.ignored or not result.handled:
+            return
+        self.conversation_memory.remember(
+            result.intent,
+            text,
+            str(response.get("response", "")),
+            _conversation_fact_data(result.intent, snapshot),
+        )
 
     def _command_response(
         self,
@@ -345,3 +545,150 @@ class RaceEngineerService:
         )
         for job in reversed(jobs):
             self.voice_jobs.appendleft(job)
+
+
+def _conversation_fact_data(intent: str, snapshot: RaceSnapshot) -> dict[str, object] | None:
+    if intent == "best_lap":
+        data: dict[str, object] = {}
+        if snapshot.best_lap_time_ms is not None and snapshot.best_lap_time_ms >= 0:
+            data["lap_time_ms"] = snapshot.best_lap_time_ms
+            data["lap_time"] = snapshot.to_dict()["best_lap_time"]
+        if snapshot.best_lap_number is not None:
+            data["lap_number"] = snapshot.best_lap_number
+        return data or None
+    if intent == "last_lap":
+        data = {}
+        if snapshot.last_lap_time_ms is not None and snapshot.last_lap_time_ms >= 0:
+            data["lap_time_ms"] = snapshot.last_lap_time_ms
+            data["lap_time"] = snapshot.to_dict()["last_lap_time"]
+        lap_number = _last_completed_lap_number(snapshot)
+        if lap_number is not None:
+            data["lap_number"] = lap_number
+        return data or None
+    if intent == "fuel_burn_rate" and snapshot.fuel_per_lap is not None:
+        return {
+            "fuel_per_lap": snapshot.fuel_per_lap,
+            "fuel_sample_count": snapshot.fuel_sample_count,
+        }
+    if intent == "last_lap_fuel":
+        last_lap = snapshot.lap_history[-1] if snapshot.lap_history else None
+        if last_lap is not None and last_lap.fuel_used is not None:
+            return {
+                "lap_number": last_lap.lap_number,
+                "fuel_used": last_lap.fuel_used,
+            }
+        return None
+    if intent == "position" and snapshot.current_position is not None:
+        data = {"current_position": snapshot.current_position}
+        if snapshot.total_cars is not None:
+            data["total_cars"] = snapshot.total_cars
+        return data
+    if intent in {"laps_left", "time_remaining"}:
+        data = {}
+        for key, value in [
+            ("current_lap", snapshot.current_lap),
+            ("laps_left", snapshot.laps_left),
+            ("race_time_remaining_ms", snapshot.race_time_remaining_ms),
+        ]:
+            if value is not None:
+                data[key] = value
+        return data or None
+    if intent == "pit_status":
+        return {
+            "pit_recommendation": snapshot.pit_recommendation,
+            "fuel_margin_laps": snapshot.fuel_margin_laps,
+            "fuel_per_lap": snapshot.fuel_per_lap,
+            "laps_left": snapshot.laps_left,
+        }
+    if intent == "fuel_status":
+        return {
+            "fuel_level": snapshot.fuel_level,
+            "fuel_laps_remaining": snapshot.fuel_laps_remaining,
+            "fuel_margin_laps": snapshot.fuel_margin_laps,
+        }
+    return None
+
+
+def _last_completed_lap_number(snapshot: RaceSnapshot) -> int | None:
+    if snapshot.lap_history:
+        return snapshot.lap_history[-1].lap_number
+    if snapshot.current_lap is not None and snapshot.current_lap > 1:
+        return snapshot.current_lap - 1
+    return None
+
+
+def _normalize_memory_text(text: str) -> str:
+    return re.sub(r"\s+", " ", text.strip().lower())
+
+
+def _looks_like_follow_up(text: str) -> bool:
+    if not text:
+        return False
+    return (
+        "that" in text
+        or text.startswith("and ")
+        or text in {"why", "why?", "again", "repeat"}
+        or _asks_sample_count(text)
+        or _asks_total_cars(text)
+        or _asks_faster_than_best(text)
+    )
+
+
+def _asks_which_lap(text: str) -> bool:
+    return (
+        ("which lap" in text or "what lap" in text or "when was that" in text)
+        and "based on" not in text
+    )
+
+
+def _asks_sample_count(text: str) -> bool:
+    return "based on" in text and ("lap" in text or "sample" in text)
+
+
+def _asks_total_cars(text: str) -> bool:
+    return "how many cars" in text or "total cars" in text or "cars in the race" in text
+
+
+def _asks_how_much_that(text: str) -> bool:
+    return "how much" in text and "that" in text
+
+
+def _asks_faster_than_best(text: str) -> bool:
+    return (
+        "faster" in text
+        and ("best" in text or "best lap" in text)
+        and ("that" in text or "it" in text)
+    )
+
+
+def _asks_repeat(text: str) -> bool:
+    return (
+        "what was that again" in text
+        or "say that again" in text
+        or "repeat" in text
+        or text == "again"
+    )
+
+
+def _amount_response(fact: ConversationFact) -> str | None:
+    fuel_used = fact.data.get("fuel_used")
+    if isinstance(fuel_used, (int, float)):
+        return f"That was {fuel_used:.1f} percent fuel."
+    fuel_per_lap = fact.data.get("fuel_per_lap")
+    if isinstance(fuel_per_lap, (int, float)):
+        return f"That was {fuel_per_lap:.1f} percent per lap."
+    return None
+
+
+def _faster_than_best_response(
+    fact: ConversationFact,
+    snapshot: RaceSnapshot,
+) -> str | None:
+    lap_time = fact.data.get("lap_time_ms")
+    best_lap = snapshot.best_lap_time_ms
+    if not isinstance(lap_time, int) or best_lap is None or best_lap < 0:
+        return None
+    delta = lap_time - best_lap
+    if delta <= 0:
+        return "Yes. That matched your best lap."
+    return f"No. It was {format_spoken_delta(delta)} slower than your best."

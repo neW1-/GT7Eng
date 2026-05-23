@@ -29,6 +29,7 @@ Local Gran Turismo 7 race engineer for macOS. It auto-discovers the PS5 via `gt-
 - [x] Optional LLM intent repair maps noisy voice transcripts to deterministic commands.
 - [x] `quiet_driver_ai` conversational mode keeps strict commands first, then uses the local LLM for high-confidence free-form questions.
 - [x] Deterministic fuel-burn answers for “fuel burn rate” and “fuel used last lap.”
+- [x] Short-turn follow-up memory for references like “which lap was that?” and “why?”
 - [x] LLM/STT/TTS calls run off the FastAPI event loop so slow local generation does not starve telemetry ingestion.
 
 ## Todo
@@ -54,6 +55,7 @@ Local Gran Turismo 7 race engineer for macOS. It auto-discovers the PS5 via `gt-
 - [ ] Tune Discord STT confidence, segment timing, and false-positive suppression from more headset samples.
 - [ ] Add local/LAN OpenAI-compatible LLM smoke tests and model setup docs.
 - [x] Add LLM intent repair for noisy Discord STT transcripts.
+- [x] Add short-turn follow-up memory for recent deterministic race answers.
 - [x] Throttle spoken telemetry-stale alerts and keep telemetry-connected alerts silent to avoid voice loops during packet flaps.
 - [x] Add richer incident/coaching monitors for lockups, wheelspin, spins, and impact-like events.
 - [ ] Add off-track detection if GT7 exposes a reliable signal.
@@ -162,6 +164,12 @@ Live validation notes from 2026-05-23:
 - Lap alerts were confirmed in the alert feed and Discord voice job acknowledgements.
 - Lap/best-lap logic now prefers completed-lap history, so spoken deltas and HUD best-lap data are not thrown off by unstable raw GT7 best-lap packets.
 
+Live validation notes from 2026-05-24:
+
+- Short-turn follow-up memory worked in initial live tests after deterministic answers.
+- Follow-ups like “which lap was that?” now resolve from structured memory instead of requiring the LLM to infer the prior answer.
+- Recent memory is sent to the local LLM for conversational follow-ups like “why?” after deterministic follow-up handling fails.
+
 ## Audio Configuration
 
 STT is optional and off by default:
@@ -187,7 +195,17 @@ Voice modes:
 - `quiet_driver_ai`: no wake phrase; strict deterministic commands and intent repair run first, then high-confidence unknown speech can use the configured local LLM for conversational race-state Q&A.
 - `wake_phrase`: requires the configured wake phrase, then supports deterministic commands and LLM fallback.
 
-Deterministic answers still own race math. Questions like “what’s my fuel burn rate?” and “how much fuel did I use last lap?” are answered from completed-lap telemetry in percent, not by the LLM. Free-form LLM answers receive only current race state plus request date/time context and must say unavailable for missing telemetry.
+Deterministic answers still own race math. Questions like “what’s my fuel burn rate?” and “how much fuel did I use last lap?” are answered from completed-lap telemetry in percent, not by the LLM. Free-form LLM answers receive only current race state, request date/time context, and a short recent-memory snapshot when one exists. The LLM must say unavailable for missing telemetry.
+
+Short-turn memory is intentionally small and in-process only. After a deterministic answer, the service remembers one structured fact for 60 seconds, such as best lap number/time, last lap number/time, fuel burn rate and sample count, last-lap fuel used, position, laps left, time remaining, or the latest pit/fuel status. Follow-ups are resolved deterministically before any LLM fallback:
+
+- “What’s my best lap?” then “Which lap was that?” -> “That was lap 2.”
+- “How much fuel did I use last lap?” then “What lap was that?” -> “That was lap 4.”
+- “What’s my fuel burn rate?” then “How many laps is that based on?” -> fuel sample count.
+- “What was my last lap?” then “Was that faster than my best?” -> deterministic delta when best-lap data is available.
+- “Do I need to pit?” then “Why?” -> LLM can explain using the recent pit/fuel answer plus current race state.
+
+When the 60-second window expires, or the remembered fact does not contain the requested detail, the engineer says it needs a recent answer or that the prior answer did not refer to that data. In `wake_phrase` mode, follow-ups still require the wake phrase.
 
 Discord driver requests are prioritized over pending alert playback. The bridge clears queued local audio and pauses voice-job polling while Python handles a driver utterance, and Python drops queued system connection alerts for Discord requests. LLM, STT, and TTS work runs in worker threads so slow local generation does not block telemetry ingestion.
 

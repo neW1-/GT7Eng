@@ -5,6 +5,8 @@ Build a local macOS GT7 race engineer that auto-discovers the PS5, reads GT7 tel
 
 The Discord bot is the race radio: it listens to your headset in a private Discord voice channel and speaks proactive updates plus answers back through the same channel. Text chat remains only for testing, debugging, and fallback.
 
+The live voice path now supports short-turn conversational memory. Deterministic race answers store one structured fact for 60 seconds, so immediate follow-ups like “which lap was that?” or “why?” can reference the previous answer without making the LLM infer telemetry.
+
 ## Baruta-Inspired Improvement TODOs
 - [x] Add Discord STT/audio input from the configured driver user.
 - [x] Add optional local `faster-whisper` transcription.
@@ -21,6 +23,7 @@ The Discord bot is the race radio: it listens to your headset in a private Disco
   - [x] Live PS5 auto-discovery and on-track GT7 telemetry smoke test passed.
   - [x] Runs deterministic monitors for fuel, pit timing, laps, position, tire/car health, and connection health.
   - [x] Add richer pace and incident monitors for lockups, wheelspin, spins, and impact-like events.
+  - [x] Maintains short, in-process conversational memory for one recent deterministic answer.
   - [ ] Add off-track and corner-loss monitors if GT7 exposes reliable signals.
   - [x] Provides local HTTP/WebSocket APIs for HUD, Discord bridge, replay, and testing.
 - Discord voice bridge:
@@ -111,10 +114,22 @@ The Discord bot is the race radio: it listens to your headset in a private Disco
   - [x] “Give me an update.”
   - [x] “Keep quiet.”
   - [x] “More fuel updates.”
+- Supported short-turn follow-ups:
+  - [x] “Which lap was that?”
+  - [x] “What lap was that?”
+  - [x] “When was that?”
+  - [x] “How much was that?”
+  - [x] “What was that again?”
+  - [x] “How many laps is that based on?”
+  - [x] “Was that faster than my best?”
+  - [x] “How many cars are in the race?”
+  - [x] “Why?” with recent context for the LLM when deterministic handling cannot answer directly.
 - [x] Urgent/proactive calls do not require a question.
 - [x] LLM adapter exists for natural phrasing, summaries, and flexible questions.
 - [x] LLM intent-repair path maps noisy transcripts to known deterministic commands.
 - [x] Free-form LLM answers receive current race state plus request date/time context.
+- [x] Short-turn memory stores structured deterministic facts for 60 seconds and resolves immediate follow-ups before LLM fallback.
+- [x] Recent memory is included in free-form LLM payloads after deterministic follow-up resolution fails.
 - [x] LLM/STT/TTS calls run off the FastAPI event loop so slow local generation does not block telemetry ingestion.
 - [ ] Add live local/LAN LLM smoke tests and prompt regression coverage.
 - [ ] Validate spoken fuel, pit, lap, tire, and update commands during live driving.
@@ -154,6 +169,8 @@ The Discord bot is the race radio: it listens to your headset in a private Disco
   - [x] Must say unavailable for unsupported data like opponent gaps or nearby-car spotter info.
   - [x] Must not invent telemetry.
   - [x] Request context includes current date/time for general questions.
+  - [x] Recent conversational memory is limited to one structured fact and expires after 60 seconds.
+  - [x] Deterministic follow-up parsing runs before LLM fallback.
   - [x] `gemma-4-e4b-it-4bit` is the recommended live local model on the 16 GB M4 test setup.
   - [ ] Add automated LLM regression tests with a stub OpenAI-compatible server.
 
@@ -193,6 +210,8 @@ The Discord bot is the race radio: it listens to your headset in a private Disco
 - [x] 2026-05-23: `gemma-4-e4b-it-4bit` tested better than the earlier Qwen 9B setup for live response latency.
 - [x] 2026-05-23: Slow LLM/STT/TTS work was moved off the FastAPI event loop to prevent false telemetry-stale flaps.
 - [x] 2026-05-23: Spoken telemetry connection alerts were throttled/silenced to stop stale/connected voice loops.
+- [x] 2026-05-24: Short-turn follow-up memory worked in initial live tests for recent deterministic answers.
+- [x] 2026-05-24: Follow-up context is now passed to the local LLM for conversational explanations after deterministic handling fails.
 - [ ] Full short-race validation with lap summaries, final lap, and finish behavior.
 - [ ] Endurance-style stint validation with fuel burn, pit advice, and fuel-margin calls.
 - [ ] Live validation of every supported spoken command.
@@ -216,6 +235,7 @@ The Discord bot is the race radio: it listens to your headset in a private Disco
 - [x] Voice commands: VAD/STT endpoint, wake phrase mode, quiet-driver mode, Discord audio loop.
 - [x] LLM adapter: OpenAI-compatible race-state Q&A and summaries.
 - [x] Conversational mode hardening: response priority, non-blocking LLM calls, request date/time context, and connection-alert throttling.
+- [x] Short-turn memory: structured deterministic facts, 60-second expiry, deterministic follow-ups, and LLM context handoff.
 - [x] Integration hardening: reconnects, stale telemetry edge cases, bot errors, config validation, logging.
 - [x] Live GT7 smoke validation: PS5 discovery, stable packet rate, HUD/API on-track updates.
 - [ ] Live GT7 validation: full short race, endurance-style race, replay comparison, alert tuning.
@@ -229,6 +249,7 @@ The Discord bot is the race radio: it listens to your headset in a private Disco
   - [x] Pit urgency rules for “pit required,” “box within 1 lap,” and “box this lap.”
   - [x] Retry/new-session fuel-history reset and unstable fuel-projection suppression.
   - [x] Spoken lap delta logic against completed-lap history.
+  - [x] Short-turn memory follow-ups for best lap, last lap, fuel burn, last-lap fuel, position, expiry, and LLM context payloads.
   - [x] Alert cooldowns and verbosity.
   - [x] Session phase, tire wear, incident, driving-style, STT transcript, and audio-status API behavior.
 - Replay tests:
@@ -248,6 +269,7 @@ The Discord bot is the race radio: it listens to your headset in a private Disco
   - [ ] Bot ignores its own speech.
 - LLM tests:
   - [x] Request-context payload includes current date/time for free-form questions.
+  - [x] Conversation-context payload includes recent short-turn memory when available.
   - [ ] Fixed race-state questions.
   - [ ] Unsupported-data answers.
   - [ ] Timeout/fallback behavior.

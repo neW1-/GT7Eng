@@ -45,6 +45,31 @@ def test_wake_phrase_handles_with_phrase():
     assert "P5" in result["response"]
 
 
+def test_wake_phrase_follow_up_still_requires_phrase():
+    config = AppConfig(voice_mode="wake_phrase", wake_phrase="engineer")
+    service = RaceEngineerService(config)
+    service.update_frame(synthetic_frame(timestamp=1.0, current_lap=1, fuel_level=80.0))
+    service.update_frame(
+        synthetic_frame(
+            timestamp=2.0,
+            current_lap=2,
+            fuel_level=72.0,
+            last_lap_time_ms=83_000,
+            best_lap_time_ms=83_000,
+        )
+    )
+
+    best = service.handle_command("engineer what's my best lap")
+    missing_phrase = service.handle_command("which lap was that")
+    with_phrase = service.handle_command("engineer which lap was that")
+
+    assert best["intent"] == "best_lap"
+    assert missing_phrase["ignored"] is True
+    assert missing_phrase["intent"] == "missing_wake_phrase"
+    assert with_phrase["intent"] == "follow_up_lap"
+    assert with_phrase["response"] == "That was lap 1."
+
+
 def test_timed_race_lap_and_time_commands():
     config = AppConfig(race_duration_minutes=30)
     service = RaceEngineerService(config)
@@ -223,6 +248,175 @@ def test_fuel_burn_question_needs_completed_lap():
     assert result["handled"] is True
     assert result["intent"] == "fuel_burn_rate"
     assert result["response"] == "Need one completed lap for fuel burn."
+
+
+def test_best_lap_follow_up_reports_lap_number():
+    service = RaceEngineerService(AppConfig())
+    service.update_frame(synthetic_frame(timestamp=1.0, current_lap=1, fuel_level=80.0))
+    service.update_frame(
+        synthetic_frame(
+            timestamp=2.0,
+            current_lap=2,
+            fuel_level=72.0,
+            last_lap_time_ms=83_000,
+            best_lap_time_ms=83_000,
+        )
+    )
+    service.update_frame(
+        synthetic_frame(
+            timestamp=3.0,
+            current_lap=3,
+            fuel_level=65.0,
+            last_lap_time_ms=84_000,
+            best_lap_time_ms=83_000,
+        )
+    )
+
+    best = service.handle_command("what's my best lap")
+    follow_up = service.handle_command("which lap was that")
+
+    assert best["intent"] == "best_lap"
+    assert follow_up["intent"] == "follow_up_lap"
+    assert follow_up["response"] == "That was lap 1."
+
+
+def test_last_lap_fuel_follow_up_reports_lap_number():
+    service = RaceEngineerService(AppConfig())
+    service.update_frame(synthetic_frame(timestamp=1.0, current_lap=1, fuel_level=80.0))
+    service.update_frame(
+        synthetic_frame(
+            timestamp=2.0,
+            current_lap=2,
+            fuel_level=72.0,
+            last_lap_time_ms=90_000,
+        )
+    )
+
+    fuel = service.handle_command("how much fuel did I use last lap")
+    follow_up = service.handle_command("what lap was that")
+
+    assert fuel["intent"] == "last_lap_fuel"
+    assert follow_up["response"] == "That was lap 1."
+
+
+def test_fuel_burn_follow_up_reports_sample_count():
+    service = RaceEngineerService(AppConfig())
+    service.update_frame(synthetic_frame(timestamp=1.0, current_lap=1, fuel_level=80.0))
+    service.update_frame(
+        synthetic_frame(
+            timestamp=2.0,
+            current_lap=2,
+            fuel_level=72.0,
+            last_lap_time_ms=90_000,
+        )
+    )
+    service.update_frame(
+        synthetic_frame(
+            timestamp=3.0,
+            current_lap=3,
+            fuel_level=65.0,
+            last_lap_time_ms=91_000,
+        )
+    )
+
+    burn = service.handle_command("what's my fuel burn rate")
+    follow_up = service.handle_command("how many laps is that based on")
+
+    assert burn["intent"] == "fuel_burn_rate"
+    assert follow_up["intent"] == "follow_up_sample_count"
+    assert follow_up["response"] == "That is based on 2 completed fuel samples."
+
+
+def test_position_follow_up_reports_total_cars():
+    service = RaceEngineerService(AppConfig())
+    service.update_frame(synthetic_frame(current_position=5, total_cars=16))
+
+    position = service.handle_command("what position am I")
+    follow_up = service.handle_command("how many cars are in the race")
+
+    assert position["intent"] == "position"
+    assert follow_up["intent"] == "follow_up_total_cars"
+    assert follow_up["response"] == "16 cars total."
+
+
+def test_last_lap_follow_up_compares_to_best_lap():
+    service = RaceEngineerService(AppConfig())
+    service.update_frame(synthetic_frame(timestamp=1.0, current_lap=1, fuel_level=80.0))
+    service.update_frame(
+        synthetic_frame(
+            timestamp=2.0,
+            current_lap=2,
+            fuel_level=72.0,
+            last_lap_time_ms=83_000,
+            best_lap_time_ms=83_000,
+        )
+    )
+    service.update_frame(
+        synthetic_frame(
+            timestamp=3.0,
+            current_lap=3,
+            fuel_level=65.0,
+            last_lap_time_ms=84_000,
+            best_lap_time_ms=83_000,
+        )
+    )
+
+    last_lap = service.handle_command("what was my last lap")
+    follow_up = service.handle_command("was that faster than my best")
+
+    assert last_lap["intent"] == "last_lap"
+    assert follow_up["intent"] == "follow_up_best_delta"
+    assert follow_up["response"] == "No. It was about 1 second slower than your best."
+
+
+def test_follow_up_memory_expires():
+    service = RaceEngineerService(AppConfig())
+    service.update_frame(synthetic_frame(timestamp=1.0, current_lap=1, fuel_level=80.0))
+    service.update_frame(
+        synthetic_frame(
+            timestamp=2.0,
+            current_lap=2,
+            fuel_level=72.0,
+            last_lap_time_ms=83_000,
+            best_lap_time_ms=83_000,
+        )
+    )
+    service.handle_command("what's my best lap")
+    service.conversation_memory.ttl_seconds = -1
+
+    follow_up = service.handle_command("which lap was that")
+
+    assert follow_up["intent"] == "follow_up_unavailable"
+    assert follow_up["response"] == "I need a recent answer to refer back to."
+
+
+def test_unrelated_unknown_without_memory_still_falls_through_safely():
+    service = RaceEngineerService(AppConfig())
+
+    result = service.handle_transcript("which compound am I on", "discord")
+
+    assert result["ignored"] is True
+    assert result["intent"] == "unknown_quiet_driver"
+
+
+def test_llm_question_receives_recent_memory_context():
+    config = AppConfig(voice_mode="quiet_driver_ai")
+    service = RaceEngineerService(config)
+    captured = {}
+
+    def fake_ask(_text, _snapshot, conversation_context=None):
+        captured["conversation_context"] = conversation_context
+        return "Because the fuel margin is tight."
+
+    service.llm.ask = fake_ask
+    service.update_frame(synthetic_frame(fuel_level=20.0))
+    service.handle_transcript("do I need to pit", "discord", confidence=1.0)
+
+    result = service.handle_transcript("why", "discord", confidence=1.0)
+
+    assert result["intent"] == "llm_question"
+    assert captured["conversation_context"]["intent"] == "pit_status"
+    assert "fuel" in captured["conversation_context"]["response"].lower()
 
 
 def test_wake_phrase_unknown_transcript_can_fall_back_to_llm():
