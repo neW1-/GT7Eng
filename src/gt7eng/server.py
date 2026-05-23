@@ -84,11 +84,16 @@ def create_app(
 
     @app.post("/api/chat")
     async def chat(request: CommandRequest) -> dict:
-        return service.handle_command(request.text, request.source)
+        return await asyncio.to_thread(
+            service.handle_command,
+            request.text,
+            request.source,
+        )
 
     @app.post("/api/discord/transcript")
     async def discord_transcript(request: CommandRequest) -> dict:
-        return service.handle_transcript(
+        return await asyncio.to_thread(
+            service.handle_transcript,
             request.text,
             "discord",
             1.0 if request.confidence is None else request.confidence,
@@ -107,17 +112,18 @@ def create_app(
 
         tmp_path = _write_temp_audio(data)
         try:
-            result = stt.transcribe(tmp_path)
+            result = await asyncio.to_thread(stt.transcribe, tmp_path)
         except STTUnavailableError as exc:
             return {"ok": False, "error": str(exc)}
         finally:
             if not app_config.stt.keep_audio:
                 tmp_path.unlink(missing_ok=True)
 
-        command = (
-            service.handle_transcript(result.text, "discord", result.confidence)
-            if result.text
-            else service.handle_transcript("", "discord", 0.0)
+        command = await asyncio.to_thread(
+            service.handle_transcript,
+            result.text if result.text else "",
+            "discord",
+            result.confidence if result.text else 0.0,
         )
         return {
             "ok": True,
@@ -153,7 +159,7 @@ def create_app(
         if not text:
             return {"error": "text is required"}
         try:
-            audio_file = tts.synthesize(text)
+            audio_file = await asyncio.to_thread(tts.synthesize, text)
         except TTSUnavailableError as exc:
             return {"error": str(exc)}
         return {

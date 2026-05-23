@@ -5,6 +5,7 @@ import re
 import urllib.error
 import urllib.request
 from dataclasses import dataclass
+from datetime import datetime
 from typing import Any
 
 from .config import LLMConfig
@@ -13,6 +14,8 @@ from .models import RaceSnapshot
 
 ALLOWED_REPAIR_INTENTS = {
     "fuel_status": "how is my fuel",
+    "fuel_burn_rate": "what is my fuel burn rate",
+    "last_lap_fuel": "how much fuel did I use last lap",
     "pit_status": "do I need to pit",
     "laps_left": "how many laps left",
     "time_remaining": "how much time left",
@@ -53,9 +56,10 @@ class OpenAICompatibleClient:
                     "role": "system",
                     "content": (
                         "You are a concise GT7 race engineer. Answer only from the "
-                        "provided race_state. If data is unavailable, say it is "
-                        "unavailable. Do not invent opponent gaps, nearby car data, "
-                        "weather, tire wear, or strategy facts not present."
+                        "provided race_state and request_context. If data is "
+                        "unavailable, say it is unavailable. Do not invent opponent "
+                        "gaps, nearby car data, weather, tire wear, or strategy facts "
+                        "not present."
                         " Fuel level and fuel-per-lap fields are percentages, not liters."
                     ),
                 },
@@ -64,6 +68,7 @@ class OpenAICompatibleClient:
                     "content": json.dumps(
                         {
                             "race_state": snapshot.to_dict(),
+                            "request_context": _request_context(),
                             "question": question,
                         },
                         separators=(",", ":"),
@@ -196,3 +201,11 @@ def _clamp_confidence(value: Any) -> float:
         return max(0.0, min(1.0, float(value)))
     except (TypeError, ValueError):
         return 0.0
+
+
+def _request_context() -> dict[str, str]:
+    now = datetime.now().astimezone()
+    return {
+        "current_date": now.date().isoformat(),
+        "current_time": now.isoformat(timespec="seconds"),
+    }

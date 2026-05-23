@@ -34,6 +34,7 @@ export class DiscordVoiceBridge {
     this.receiveWatchdogTimer = null;
     this.receiveSubscriptions = new Map();
     this.intentionalDisconnect = false;
+    this.awaitingCommandResponse = false;
   }
 
   async start() {
@@ -73,6 +74,7 @@ export class DiscordVoiceBridge {
   }
 
   async pollOnce() {
+    if (this.awaitingCommandResponse) return;
     if (this.state.engineerMuted || this.state.mode === "silent") return;
     if (!this.state.voiceChannelId) return;
 
@@ -371,19 +373,29 @@ export class DiscordVoiceBridge {
       sampleRate: this.config.stt.sampleRate,
       channels: this.config.stt.channels
     });
-    const result = await this.python.postAudioSegment({
-      userId,
-      startedAt: startedAt.toISOString(),
-      endedAt: endedAt.toISOString(),
-      sampleRate: this.config.stt.sampleRate,
-      channels: this.config.stt.channels,
-      audio: wav
-    });
-    this.logger.info("Speech segment handled", {
-      transcript: result.transcript || "",
-      intent: result.command?.intent || "none",
-      confidence: result.command?.confidence ?? result.confidence ?? 0
-    });
+    this.audio.clear();
+    this.awaitingCommandResponse = true;
+    try {
+      const result = await this.python.postAudioSegment({
+        userId,
+        startedAt: startedAt.toISOString(),
+        endedAt: endedAt.toISOString(),
+        sampleRate: this.config.stt.sampleRate,
+        channels: this.config.stt.channels,
+        audio: wav
+      });
+      this.logger.info("Speech segment handled", {
+        transcript: result.transcript || "",
+        intent: result.command?.intent || "none",
+        confidence: result.command?.confidence ?? result.confidence ?? 0
+      });
+    } finally {
+      this.awaitingCommandResponse = false;
+      this.pollOnce().catch((error) => {
+        this.state.lastError = error.message;
+        this.logger.warn("Voice job polling failed", { message: error.message });
+      });
+    }
   }
 
   stopReceiveStreams() {

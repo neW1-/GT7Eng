@@ -1,4 +1,6 @@
 from gt7eng.config import AppConfig
+from gt7eng.alerts import AlertManager
+from gt7eng.models import RaceSnapshot
 from gt7eng.service import RaceEngineerService
 from gt7eng.telemetry import synthetic_frame
 
@@ -89,6 +91,22 @@ def test_fuel_short_does_not_force_box_this_lap_when_stint_has_range():
         alert.category == "fuel" and alert.message == "Pit required. Box within 3 laps."
         for alert in alerts
     )
+
+
+def test_connection_alerts_do_not_spam_voice_on_flap():
+    manager = AlertManager(AppConfig())
+
+    assert manager.connection_alerts(RaceSnapshot(connected=True)) == []
+    stale = manager.connection_alerts(RaceSnapshot(connected=False))
+    connected = manager.connection_alerts(RaceSnapshot(connected=True))
+    repeated_stale = manager.connection_alerts(RaceSnapshot(connected=False))
+
+    assert len(stale) == 1
+    assert stale[0].speak is True
+    assert len(connected) == 1
+    assert connected[0].message == "Telemetry connected."
+    assert connected[0].speak is False
+    assert repeated_stale == []
 
 
 def test_fuel_low_boxes_this_lap_only_when_stint_is_almost_empty():

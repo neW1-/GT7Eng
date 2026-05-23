@@ -20,6 +20,7 @@ class VoiceJob:
     kind: str
     text: str
     alert_id: int | None = None
+    category: str | None = None
 
     def to_dict(self) -> dict:
         return {
@@ -27,6 +28,7 @@ class VoiceJob:
             "kind": self.kind,
             "text": self.text,
             "alert_id": self.alert_id,
+            "category": self.category,
         }
 
 
@@ -80,7 +82,9 @@ class RaceEngineerService:
                 pass
 
     def handle_command(self, text: str, source: str = "text") -> dict:
-        result = parse_voice_command(text, self.snapshot, self.config)
+        self._prepare_for_driver_request(source)
+        snapshot = self._snapshot_for_request(source)
+        result = parse_voice_command(text, snapshot, self.config)
         if result.ignored:
             return self._command_response(text, result, source)
         if result.handled:
@@ -89,11 +93,11 @@ class RaceEngineerService:
             self._queue_response_voice_job(response)
             return response
 
-        repaired = self._try_intent_repair(text, source)
+        repaired = self._try_intent_repair(text, source, snapshot)
         if repaired is not None:
             return repaired
 
-        answer = self.llm.ask(text, self.snapshot)
+        answer = self.llm.ask(text, snapshot)
         result = VoiceResult(True, False, "llm_question", answer, 0.5)
         response = self._command_response(text, result, source)
         self._queue_response_voice_job(response)
@@ -109,7 +113,9 @@ class RaceEngineerService:
             result = VoiceResult(False, True, "low_confidence", "", confidence)
             return self._command_response(text, result, source)
 
-        result = parse_voice_command(text, self.snapshot, self.config)
+        self._prepare_for_driver_request(source)
+        snapshot = self._snapshot_for_request(source)
+        result = parse_voice_command(text, snapshot, self.config)
         if result.ignored:
             return self._command_response(text, result, source)
         if result.handled:
@@ -118,7 +124,7 @@ class RaceEngineerService:
             self._queue_response_voice_job(response)
             return response
 
-        repaired = self._try_intent_repair(text, source)
+        repaired = self._try_intent_repair(text, source, snapshot)
         if repaired is not None:
             return repaired
 
@@ -130,7 +136,7 @@ class RaceEngineerService:
             ignored = VoiceResult(False, True, "unknown_quiet_driver", "", result.confidence)
             return self._command_response(text, ignored, source)
 
-        answer = self.llm.ask(text, self.snapshot)
+        answer = self.llm.ask(text, snapshot)
         result = VoiceResult(True, False, "llm_question", answer, 0.5)
         response = self._command_response(text, result, source)
         self._queue_response_voice_job(response)
@@ -199,7 +205,7 @@ class RaceEngineerService:
         self._muted = muted
 
     def set_voice_mode(self, mode: str) -> None:
-        if mode in {"wake_phrase", "quiet_driver"}:
+        if mode in {"wake_phrase", "quiet_driver", "quiet_driver_ai"}:
             self.config.voice_mode = mode  # type: ignore[assignment]
         elif mode == "silent":
             self._muted = True
@@ -218,6 +224,7 @@ class RaceEngineerService:
                         kind="tts",
                         text=alert.message,
                         alert_id=alert.id,
+                        category=alert.category,
                     )
                 )
 
@@ -232,18 +239,23 @@ class RaceEngineerService:
         elif result.intent == "set_race_duration" and result.race_duration_minutes:
             self.config.race_duration_minutes = result.race_duration_minutes
 
-    def _try_intent_repair(self, text: str, source: str) -> dict | None:
+    def _try_intent_repair(
+        self,
+        text: str,
+        source: str,
+        snapshot: RaceSnapshot,
+    ) -> dict | None:
         if not self.config.llm.intent_repair_enabled:
             return None
 
-        repair = self.llm.repair_intent(text, self.snapshot)
+        repair = self.llm.repair_intent(text, snapshot)
         if repair is None:
             return None
         if repair.confidence < self.config.llm.intent_repair_min_confidence:
             return None
 
         repaired_text = self._repair_text_for_parser(repair)
-        result = parse_voice_command(repaired_text, self.snapshot, self.config)
+        result = parse_voice_command(repaired_text, snapshot, self.config)
         if not result.handled or result.intent != repair.intent:
             return None
 
@@ -266,6 +278,19 @@ class RaceEngineerService:
         if self.config.voice_mode == "wake_phrase":
             return f"{self.config.wake_phrase} {repair.command}"
         return repair.command
+
+    def _prepare_for_driver_request(self, source: str) -> None:
+        if source != "discord":
+            return
+        self.voice_jobs = deque(
+            (job for job in self.voice_jobs if job.category != "system"),
+            maxlen=self.voice_jobs.maxlen,
+        )
+
+    def _snapshot_for_request(self, source: str) -> RaceSnapshot:
+        if source == "discord":
+            return self.state.stale_snapshot()
+        return self.snapshot
 
     def _command_response(
         self,
@@ -302,18 +327,21 @@ class RaceEngineerService:
     def _queue_response_voice_job(self, response: dict) -> None:
         if response["source"] != "discord" or not response["speak"]:
             return
+        jobs: list[VoiceJob] = []
         if self.config.tts.radio_effects:
-            self.voice_jobs.append(
+            jobs.append(
                 VoiceJob(
                     id=f"tone-{int(response['received_at'] * 1000)}",
                     kind="tone",
                     text="confirmation",
                 )
             )
-        self.voice_jobs.append(
+        jobs.append(
             VoiceJob(
                 id=f"response-{int(response['received_at'] * 1000)}",
                 kind="tts",
                 text=response["response"],
             )
         )
+        for job in reversed(jobs):
+            self.voice_jobs.appendleft(job)

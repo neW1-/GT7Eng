@@ -7,7 +7,7 @@ Node sidecar for joining a configured Discord voice channel and playing GT7Eng r
 - `/join` connects the bot to the configured or caller voice channel.
 - `/leave` disconnects from voice.
 - `/status` reports voice state, mute state, mode, and Python service health.
-- `/mode` sets bridge mode: `wake_phrase`, `quiet_driver`, or `silent`.
+- `/mode` sets bridge mode: `wake_phrase`, `quiet_driver`, `quiet_driver_ai`, or `silent`.
 - `/mute_engineer` mutes Python/TTS engineer playback.
 - `/unmute_engineer` unmutes engineer playback.
 - `/radio_check` plays a short generated test tone in voice.
@@ -101,7 +101,7 @@ Request body:
 Request body:
 
 ```json
-{ "mode": "quiet_driver" }
+{ "mode": "quiet_driver_ai" }
 ```
 
 ## Audio Receive
@@ -112,9 +112,11 @@ The bridge subscribes to the configured driver's Opus receive stream and exposes
 POST /api/discord/audio
 ```
 
-The Python service owns transcription and command handling. In `quiet_driver` mode, unknown speech can use the configured LLM only as a structured intent-repair layer that maps noisy transcripts to known deterministic commands; wake-phrase mode can also fall back to the configured LLM for supported free-form questions.
+The Python service owns transcription and command handling. In `quiet_driver` mode, unknown speech can use the configured LLM only as a structured intent-repair layer that maps noisy transcripts to known deterministic commands. In `quiet_driver_ai` mode, strict commands and intent repair still run first, then high-confidence unknown speech can fall through to the configured LLM for race-state Q&A. Wake-phrase mode can also fall back to the configured LLM after the wake phrase.
 
 Playback pauses active receive streams so the bot does not transcribe its own race-radio output.
+
+Driver requests take priority over queued alerts. When a speech segment is submitted to Python, the bridge clears pending local audio, pauses voice-job polling while the Python service handles the command or LLM request, then immediately polls for the answer. This prevents stale telemetry or other proactive alerts from speaking over a conversational response.
 
 ## Testing
 

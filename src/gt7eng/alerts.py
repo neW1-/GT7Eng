@@ -50,7 +50,16 @@ class AlertManager:
             return []
         self._system_connected = snapshot.connected
         if snapshot.connected:
-            return [self._alert("system", "important", "Telemetry connected.")]
+            return [
+                self._alert(
+                    "system",
+                    "important",
+                    "Telemetry connected.",
+                    speak=False,
+                )
+            ]
+        if not self._allowed("telemetry_stale_voice", 60):
+            return []
         return [
             self._alert(
                 "system",
@@ -303,13 +312,21 @@ class AlertManager:
             alerts.append(self._alert("car", "critical", "Oil temperature is high."))
         return alerts
 
-    def _alert(self, category: str, priority: str, message: str) -> Alert:
+    def _alert(
+        self,
+        category: str,
+        priority: str,
+        message: str,
+        *,
+        speak: bool = True,
+    ) -> Alert:
         alert = Alert(
             id=self._next_id,
             timestamp=time.time(),
             category=category,
             priority=priority,  # type: ignore[arg-type]
             message=message,
+            speak=speak,
         )
         self._next_id += 1
         return alert

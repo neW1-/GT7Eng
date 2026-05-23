@@ -1,6 +1,6 @@
 import { SlashCommandBuilder } from "discord.js";
 
-export const MODES = ["wake_phrase", "quiet_driver", "silent"];
+export const MODES = ["wake_phrase", "quiet_driver", "quiet_driver_ai", "silent"];
 
 export function buildSlashCommands() {
   return [
