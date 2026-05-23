@@ -224,7 +224,16 @@ Register slash commands once:
 npm run register
 ```
 
-Start order for a live test:
+For day-to-day use, start and stop the GT7 service plus Discord bridge from the repo root:
+
+```bash
+./start_gt7eng.sh
+./stop_gt7eng.sh
+```
+
+The start script loads `.env`, starts the Python HUD/service on `8001`, checks the configured oMLX/OpenAI-compatible endpoint, and starts the Discord bridge. Logs and PID files are written to `.gt7eng-run/`. The stop script stops the Python service and Discord bridge only; it intentionally leaves oMLX running.
+
+Manual start is still useful while debugging:
 
 ```bash
 # Terminal 1
@@ -236,15 +245,7 @@ cd bridge/discord
 npm start
 ```
 
-Then run `/join`, `/radio_check`, and `/status` in Discord. `/status` should show Python reachable. Keep `DISCORD_STT_ENABLED=false` until radio-check playback and proactive alerts are audible; then enable STT and confirm `driver_audio_packets` increases when the configured driver speaks. For the current live test setup, start Python STT with:
-
-```bash
-GT7ENG_STT_ENABLED=true \
-GT7ENG_STT_MODEL=tiny.en \
-GT7ENG_STT_DEVICE=cpu \
-GT7ENG_STT_MIN_CONFIDENCE=0.45 \
-gt7eng run --host 0.0.0.0 --port 8001
-```
+Then run `/join`, `/radio_check`, and `/status` in Discord. `/status` should show Python reachable. Keep `DISCORD_STT_ENABLED=false` until radio-check playback and proactive alerts are audible; then enable STT and confirm `driver_audio_packets` increases when the configured driver speaks.
 
 Next live tests:
 

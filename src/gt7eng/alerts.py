@@ -4,7 +4,12 @@ import time
 
 from .config import AppConfig
 from .models import Alert, RaceSnapshot, StateUpdate
-from .timefmt import format_delta, format_duration_words, format_lap_time, plural
+from .timefmt import (
+    format_duration_words,
+    format_spoken_delta,
+    format_spoken_lap_time,
+    plural,
+)
 
 
 class AlertManager:
@@ -18,9 +23,14 @@ class AlertManager:
         self._pending_position_start: int | None = None
         self._pending_position_latest: int | None = None
         self._pending_position_changed_at: float | None = None
+        self._finish_announced = False
 
     def from_update(self, update: StateUpdate) -> list[Alert]:
-        if update.snapshot.session_phase in {"menu", "loading", "paused", "finished", "stale"}:
+        if update.snapshot.session_phase == "finished":
+            return self._finish_alerts(update)
+        if update.snapshot.session_phase == "racing":
+            self._finish_announced = False
+        if update.snapshot.session_phase in {"menu", "loading", "paused", "stale"}:
             return []
         alerts: list[Alert] = []
         alerts.extend(self._position_alerts(update))
@@ -100,19 +110,24 @@ class AlertManager:
 
         snap = update.snapshot
         lap = update.completed_lap
-        delta = None
-        if snap.best_lap_time_ms is not None and lap.lap_time_ms is not None:
-            delta = lap.lap_time_ms - snap.best_lap_time_ms
-        parts = [f"Lap {lap.lap_number}: {format_lap_time(lap.lap_time_ms)}."]
-        if delta is not None:
-            parts.append(f"{format_delta(delta)} to best.")
+        lap_time = _valid_lap_time(lap.lap_time_ms)
+        previous_best = _valid_lap_time(
+            update.previous.best_lap_time_ms if update.previous is not None else None
+        )
+        parts = [f"Lap {lap.lap_number}: {format_spoken_lap_time(lap_time)}."]
+        if lap_time is not None and previous_best is not None:
+            delta = lap_time - previous_best
+            if delta < 0:
+                parts.append(f"New best, improved by {format_spoken_delta(delta)}.")
+            else:
+                parts.append(f"{_sentence_start(format_spoken_delta(delta))} to best.")
         if (
             snap.average_lap_time_ms is not None
-            and lap.lap_time_ms is not None
+            and lap_time is not None
             and self.config.category_enabled("lap", "detailed")
         ):
-            avg_delta = lap.lap_time_ms - snap.average_lap_time_ms
-            parts.append(f"{format_delta(avg_delta)} to recent average.")
+            avg_delta = lap_time - snap.average_lap_time_ms
+            parts.append(f"{_sentence_start(format_spoken_delta(avg_delta))} to recent average.")
         if snap.laps_left == 1:
             parts.append("Final lap.")
         elif snap.laps_left == 2:
@@ -122,6 +137,29 @@ class AlertManager:
         elif snap.race_mode == "timed" and snap.race_time_remaining_ms is not None:
             parts.append(f"{format_duration_words(snap.race_time_remaining_ms)} remaining.")
         return [self._alert("lap", "info", " ".join(parts))]
+
+    def _finish_alerts(self, update: StateUpdate) -> list[Alert]:
+        if self._finish_announced:
+            return []
+        if not self.config.category_enabled("lap", "balanced"):
+            return []
+        self._finish_announced = True
+
+        snap = update.snapshot
+        parts = ["Race finished."]
+        if snap.current_position is None:
+            parts.append("Position unavailable.")
+        else:
+            parts.append(f"P{snap.current_position}.")
+
+        best_lap = _valid_lap_time(snap.best_lap_time_ms)
+        if best_lap is None or snap.best_lap_number is None:
+            parts.append("Best lap unavailable.")
+        else:
+            parts.append(
+                f"Best lap was {format_spoken_lap_time(best_lap)} on lap {snap.best_lap_number}."
+            )
+        return [self._alert("lap", "important", " ".join(parts))]
 
     def _fuel_alerts(self, snapshot: RaceSnapshot, completed: bool) -> list[Alert]:
         if not self.config.category_enabled("fuel", "critical"):
@@ -260,3 +298,15 @@ class AlertManager:
             return False
         self._last_by_key[key] = now
         return True
+
+
+def _valid_lap_time(milliseconds: int | None) -> int | None:
+    if milliseconds is None or milliseconds < 0:
+        return None
+    return milliseconds
+
+
+def _sentence_start(text: str) -> str:
+    if not text:
+        return text
+    return text[0].upper() + text[1:]

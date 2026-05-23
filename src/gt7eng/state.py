@@ -142,6 +142,7 @@ class RaceState:
             )
 
         average_lap = self._average_lap_time()
+        best_lap = self._best_lap_record()
         packet_rate = self._packet_rate()
         age = max(0.0, time.time() - frame.timestamp)
         tire_wear = self._tire_wear(frame)
@@ -162,6 +163,7 @@ class RaceState:
             total_cars=frame.total_cars,
             last_lap_time_ms=frame.last_lap_time_ms,
             best_lap_time_ms=frame.best_lap_time_ms,
+            best_lap_number=best_lap.lap_number if best_lap is not None else None,
             average_lap_time_ms=average_lap,
             fuel_level=fuel_percent,
             fuel_capacity=100.0 if fuel_percent is not None else None,
@@ -212,6 +214,16 @@ class RaceState:
         if not values:
             return None
         return int(sum(values) / len(values))
+
+    def _best_lap_record(self) -> LapRecord | None:
+        valid = [
+            lap
+            for lap in self.lap_history
+            if lap.lap_time_ms is not None and lap.lap_time_ms > 0
+        ]
+        if not valid:
+            return None
+        return min(valid, key=lambda lap: lap.lap_time_ms or 0)
 
     def _laps_left(self, current_lap: int | None, total_laps: int | None) -> int | None:
         if current_lap is None or total_laps is None:

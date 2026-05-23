@@ -50,8 +50,121 @@ def test_lap_position_and_fuel_projection_alerts():
     assert snapshot.fuel_laps_remaining == 2.0
     assert snapshot.fuel_margin_laps == 0.0
     assert snapshot.fuel_unit == "percent"
+    assert snapshot.best_lap_number == 1
+    assert snapshot.to_dict()["best_lap_number"] == 1
     assert snapshot.to_dict()["fuel_level_percent"] == 20.0
     assert snapshot.to_dict()["fuel_per_lap_percent"] == 10.0
+
+
+def test_first_lap_alert_uses_spoken_time_without_best_delta():
+    service = RaceEngineerService(AppConfig())
+    service.update_frame(
+        synthetic_frame(
+            timestamp=1.0,
+            current_lap=1,
+            total_laps=5,
+            last_lap_time_ms=-1,
+            best_lap_time_ms=-1,
+        )
+    )
+
+    alerts = service.update_frame(
+        synthetic_frame(
+            timestamp=2.0,
+            current_lap=2,
+            total_laps=5,
+            last_lap_time_ms=82_999,
+            best_lap_time_ms=82_999,
+        )
+    )
+
+    lap_message = next(alert.message for alert in alerts if alert.category == "lap")
+    assert lap_message.startswith("Lap 1: 1:23.")
+    assert "to best" not in lap_message
+    assert service.snapshot.to_dict()["last_lap_time"] == "1:22.999"
+
+
+def test_slower_lap_alert_uses_rounded_spoken_delta_to_best():
+    service = RaceEngineerService(AppConfig())
+    service.update_frame(synthetic_frame(timestamp=1.0, current_lap=1, total_laps=5))
+    service.update_frame(
+        synthetic_frame(
+            timestamp=2.0,
+            current_lap=2,
+            total_laps=5,
+            last_lap_time_ms=82_999,
+            best_lap_time_ms=82_999,
+        )
+    )
+
+    alerts = service.update_frame(
+        synthetic_frame(
+            timestamp=3.0,
+            current_lap=3,
+            total_laps=5,
+            last_lap_time_ms=84_100,
+            best_lap_time_ms=82_999,
+        )
+    )
+
+    lap_message = next(alert.message for alert in alerts if alert.category == "lap")
+    assert lap_message.startswith("Lap 2: 1:24.")
+    assert "About 1 second to best." in lap_message
+
+
+def test_new_best_lap_alert_announces_improvement():
+    service = RaceEngineerService(AppConfig())
+    service.update_frame(synthetic_frame(timestamp=1.0, current_lap=1, total_laps=5))
+    service.update_frame(
+        synthetic_frame(
+            timestamp=2.0,
+            current_lap=2,
+            total_laps=5,
+            last_lap_time_ms=82_999,
+            best_lap_time_ms=82_999,
+        )
+    )
+
+    alerts = service.update_frame(
+        synthetic_frame(
+            timestamp=3.0,
+            current_lap=3,
+            total_laps=5,
+            last_lap_time_ms=82_600,
+            best_lap_time_ms=82_600,
+        )
+    )
+
+    lap_message = next(alert.message for alert in alerts if alert.category == "lap")
+    assert lap_message.startswith("Lap 2: 1:23.")
+    assert "New best, improved by less than 1 second." in lap_message
+
+
+def test_sub_half_second_slower_lap_says_less_than_one_second():
+    service = RaceEngineerService(AppConfig())
+    service.update_frame(synthetic_frame(timestamp=1.0, current_lap=1, total_laps=5))
+    service.update_frame(
+        synthetic_frame(
+            timestamp=2.0,
+            current_lap=2,
+            total_laps=5,
+            last_lap_time_ms=82_999,
+            best_lap_time_ms=82_999,
+        )
+    )
+
+    alerts = service.update_frame(
+        synthetic_frame(
+            timestamp=3.0,
+            current_lap=3,
+            total_laps=5,
+            last_lap_time_ms=83_300,
+            best_lap_time_ms=82_999,
+        )
+    )
+
+    lap_message = next(alert.message for alert in alerts if alert.category == "lap")
+    assert "Less than 1 second to best." in lap_message
 
 
 def test_position_loss_alert():
@@ -273,6 +386,93 @@ def test_menu_phase_suppresses_race_alerts():
     )
     assert alerts == []
     assert service.snapshot.session_phase == "menu"
+
+
+def test_finish_summary_alert_reports_position_and_best_lap_once():
+    service = RaceEngineerService(AppConfig())
+    service.update_frame(
+        synthetic_frame(
+            timestamp=1.0,
+            current_lap=1,
+            total_laps=3,
+            current_position=5,
+        )
+    )
+    service.update_frame(
+        synthetic_frame(
+            timestamp=2.0,
+            current_lap=2,
+            total_laps=3,
+            current_position=4,
+            last_lap_time_ms=83_100,
+            best_lap_time_ms=83_100,
+        )
+    )
+    service.update_frame(
+        synthetic_frame(
+            timestamp=3.0,
+            current_lap=3,
+            total_laps=3,
+            current_position=3,
+            last_lap_time_ms=82_600,
+            best_lap_time_ms=82_600,
+        )
+    )
+
+    finish_alerts = service.update_frame(
+        synthetic_frame(
+            timestamp=4.0,
+            current_lap=4,
+            total_laps=3,
+            current_position=3,
+            last_lap_time_ms=84_000,
+            best_lap_time_ms=82_600,
+        )
+    )
+    repeat_alerts = service.update_frame(
+        synthetic_frame(
+            timestamp=5.0,
+            current_lap=4,
+            total_laps=3,
+            current_position=3,
+            last_lap_time_ms=84_000,
+            best_lap_time_ms=82_600,
+        )
+    )
+
+    assert [alert.message for alert in finish_alerts if alert.category == "lap"] == [
+        "Race finished. P3. Best lap was 1:23 on lap 2."
+    ]
+    assert not [alert for alert in repeat_alerts if "Race finished" in alert.message]
+
+
+def test_finish_summary_alert_uses_missing_data_fallbacks():
+    service = RaceEngineerService(AppConfig())
+    service.update_frame(
+        synthetic_frame(
+            timestamp=1.0,
+            current_lap=1,
+            total_laps=1,
+            current_position=None,
+            last_lap_time_ms=-1,
+            best_lap_time_ms=-1,
+        )
+    )
+
+    alerts = service.update_frame(
+        synthetic_frame(
+            timestamp=2.0,
+            current_lap=2,
+            total_laps=1,
+            current_position=None,
+            last_lap_time_ms=-1,
+            best_lap_time_ms=-1,
+        )
+    )
+
+    assert [alert.message for alert in alerts if alert.category == "lap"] == [
+        "Race finished. Position unavailable. Best lap unavailable."
+    ]
 
 
 def test_tire_wear_and_incident_alerts():

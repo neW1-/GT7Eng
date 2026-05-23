@@ -9,6 +9,14 @@ def format_lap_time(milliseconds: int | None) -> str:
     return f"{minutes}:{seconds:02}.{millis:03}"
 
 
+def format_spoken_lap_time(milliseconds: int | None) -> str:
+    if milliseconds is None or milliseconds < 0:
+        return "time unavailable"
+    total_seconds = int((milliseconds + 500) // 1000)
+    minutes, seconds = divmod(total_seconds, 60)
+    return f"{minutes}:{seconds:02}"
+
+
 def format_duration(milliseconds: int | None) -> str:
     if milliseconds is None or milliseconds < 0:
         return "--:--"
@@ -43,6 +51,15 @@ def format_delta(milliseconds: int | None) -> str:
         return "+0.000"
     sign = "+" if milliseconds >= 0 else "-"
     return f"{sign}{abs(milliseconds) / 1000:.3f}"
+
+
+def format_spoken_delta(milliseconds: int | None) -> str:
+    if milliseconds is None:
+        return "time unavailable"
+    total_seconds = int((abs(milliseconds) + 500) // 1000)
+    if total_seconds < 1:
+        return "less than 1 second"
+    return f"about {plural(total_seconds, 'second')}"
 
 
 def plural(value: int, unit: str) -> str:

@@ -241,6 +241,7 @@ class RaceSnapshot:
     total_cars: int | None = None
     last_lap_time_ms: int | None = None
     best_lap_time_ms: int | None = None
+    best_lap_number: int | None = None
     average_lap_time_ms: int | None = None
     fuel_level: float | None = None
     fuel_capacity: float | None = None
