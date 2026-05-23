@@ -18,7 +18,7 @@ AlertCategory = Literal[
     "voice",
 ]
 Verbosity = Literal["off", "critical", "balanced", "detailed"]
-VoiceMode = Literal["wake_phrase", "quiet_driver"]
+VoiceMode = Literal["wake_phrase", "quiet_driver", "quiet_driver_ai"]
 
 
 DEFAULT_VERBOSITY: dict[AlertCategory, Verbosity] = {
@@ -189,7 +189,9 @@ class AppConfig:
 
 
 def _voice_mode(value: str) -> VoiceMode:
-    return "wake_phrase" if value == "wake_phrase" else "quiet_driver"
+    if value in {"wake_phrase", "quiet_driver_ai"}:
+        return value
+    return "quiet_driver"
 
 
 def _bool(value: str | None, default: bool) -> bool:

@@ -32,6 +32,10 @@ def parse_voice_command(text: str, snapshot: RaceSnapshot, config: AppConfig) ->
         if not normalized:
             return VoiceResult(True, False, "radio_check", "Engineer online.", 1.0)
 
+    if _asks_last_lap_fuel(normalized):
+        return VoiceResult(True, False, "last_lap_fuel", _last_lap_fuel(snapshot))
+    if _asks_fuel_burn_rate(normalized):
+        return VoiceResult(True, False, "fuel_burn_rate", _fuel_burn_rate(snapshot))
     if _matches(normalized, "fuel", "gas"):
         return VoiceResult(True, False, "fuel_status", _fuel_status(snapshot))
     race_duration = _parse_race_duration_minutes(normalized)
@@ -99,6 +103,19 @@ def _fuel_status(snapshot: RaceSnapshot) -> str:
     return " ".join(parts)
 
 
+def _fuel_burn_rate(snapshot: RaceSnapshot) -> str:
+    if snapshot.fuel_per_lap is None:
+        return "Need one completed lap for fuel burn."
+    return f"Fuel burn is {snapshot.fuel_per_lap:.1f} percent per lap."
+
+
+def _last_lap_fuel(snapshot: RaceSnapshot) -> str:
+    last_lap = snapshot.lap_history[-1] if snapshot.lap_history else None
+    if last_lap is None or last_lap.fuel_used is None:
+        return "Need one completed lap for fuel burn."
+    return f"Last lap used {last_lap.fuel_used:.1f} percent fuel."
+
+
 def _tire_status(snapshot: RaceSnapshot) -> str:
     hottest = snapshot.tire_temps.max()
     spread = snapshot.tire_temps.spread()
@@ -159,6 +176,39 @@ def _status(snapshot: RaceSnapshot) -> str:
 
 def _matches(text: str, *words: str) -> bool:
     return any(word in text for word in words)
+
+
+def _asks_fuel_burn_rate(text: str) -> bool:
+    if not _matches(text, "fuel", "gas"):
+        return False
+    return any(
+        phrase in text
+        for phrase in (
+            "burn rate",
+            "fuel burn",
+            "consumption",
+            "per lap",
+            "use rate",
+            "usage rate",
+        )
+    )
+
+
+def _asks_last_lap_fuel(text: str) -> bool:
+    if not _matches(text, "fuel", "gas") or "last lap" not in text:
+        return False
+    return any(
+        word in text
+        for word in (
+            "use",
+            "used",
+            "burn",
+            "burned",
+            "consumption",
+            "spend",
+            "spent",
+        )
+    )
 
 
 def _parse_race_duration_minutes(text: str) -> float | None:

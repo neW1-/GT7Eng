@@ -41,3 +41,19 @@ def test_llm_disable_thinking_env(monkeypatch):
     config = AppConfig.from_env()
 
     assert config.llm.disable_thinking is True
+
+
+def test_voice_mode_env_accepts_quiet_driver_ai(monkeypatch):
+    monkeypatch.setenv("GT7ENG_VOICE_MODE", "quiet_driver_ai")
+
+    config = AppConfig.from_env()
+
+    assert config.voice_mode == "quiet_driver_ai"
+
+
+def test_unknown_voice_mode_env_falls_back_to_quiet_driver(monkeypatch):
+    monkeypatch.setenv("GT7ENG_VOICE_MODE", "wake_word")
+
+    config = AppConfig.from_env()
+
+    assert config.voice_mode == "quiet_driver"

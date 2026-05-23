@@ -31,6 +31,7 @@ The Discord bot is the race radio: it listens to your headset in a private Disco
   - [x] Decode Discord Opus audio to PCM and feed Python STT/VAD.
   - [x] Sends driver audio segments to Python, where transcripts/intents are handled.
   - [x] Plays proactive calls and answers back into Discord through the voice-job/TTS contract.
+  - [x] Gives driver-requested answers priority over pending alert playback while a command is being handled.
   - [x] Live proactive position-alert playback confirmed through Discord.
   - [x] Live driver-audio receive, STT transcription, and spoken position Q&A confirmed.
 - Web HUD:
@@ -77,7 +78,7 @@ The Discord bot is the race radio: it listens to your headset in a private Disco
   - [ ] Fuel-save target calls.
   - [x] Pit advice distinguishes “pit required eventually” from “box this lap” urgency.
   - [x] Tire/car health: tire temp imbalance, overheating, oil/water warnings.
-  - [x] System status: telemetry connected/lost, packet stale.
+  - [x] System status: telemetry stale is spoken with cooldown; telemetry connected is logged/HUD-only to avoid voice loops.
   - [ ] PS5-not-found spoken setup guidance during live startup.
 - Alert categories have verbosity levels:
   - [x] `off`, `critical`, `balanced`, `detailed`.
@@ -93,9 +94,12 @@ The Discord bot is the race radio: it listens to your headset in a private Disco
   - [x] `wake_phrase`: commands start with “Engineer” or a configured phrase in the command parser.
   - [x] Add wake-phrase detection from live Discord STT transcripts.
   - [x] `quiet_driver`: no wake phrase, but only strict race command grammar is accepted in the command parser.
+  - [x] `quiet_driver_ai`: no wake phrase, strict commands first, then high-confidence unknown speech can use LLM Q&A.
   - [x] Add live STT confidence thresholds for `quiet_driver` mode.
 - Supported questions:
   - [x] “How’s my fuel?”
+  - [x] “What’s my fuel burn rate?”
+  - [x] “How much fuel did I use last lap?”
   - [x] “Do I need to pit?”
   - [x] “How many laps left?”
   - [x] “How much time left?”
@@ -110,6 +114,8 @@ The Discord bot is the race radio: it listens to your headset in a private Disco
 - [x] Urgent/proactive calls do not require a question.
 - [x] LLM adapter exists for natural phrasing, summaries, and flexible questions.
 - [x] LLM intent-repair path maps noisy transcripts to known deterministic commands.
+- [x] Free-form LLM answers receive current race state plus request date/time context.
+- [x] LLM/STT/TTS calls run off the FastAPI event loop so slow local generation does not block telemetry ingestion.
 - [ ] Add live local/LAN LLM smoke tests and prompt regression coverage.
 - [ ] Validate spoken fuel, pit, lap, tire, and update commands during live driving.
 - [ ] Tune STT confidence and segmentation from more Discord headset samples.
@@ -122,6 +128,7 @@ The Discord bot is the race radio: it listens to your headset in a private Disco
   - [x] `/status`
   - [x] `/mode wake_phrase`
   - [x] `/mode quiet_driver`
+  - [x] `/mode quiet_driver_ai`
   - [x] `/mute_engineer`
   - [x] `/unmute_engineer`
   - [x] `/radio_check`
@@ -146,6 +153,8 @@ The Discord bot is the race radio: it listens to your headset in a private Disco
   - [x] Must answer from current race state.
   - [x] Must say unavailable for unsupported data like opponent gaps or nearby-car spotter info.
   - [x] Must not invent telemetry.
+  - [x] Request context includes current date/time for general questions.
+  - [x] `gemma-4-e4b-it-4bit` is the recommended live local model on the 16 GB M4 test setup.
   - [ ] Add automated LLM regression tests with a stub OpenAI-compatible server.
 
 ## HUD And CLI
@@ -179,6 +188,11 @@ The Discord bot is the race radio: it listens to your headset in a private Disco
 - [x] 2026-05-23: Retry/new-session fuel reset and unstable-projection fuel guard were implemented for rapid retry testing.
 - [x] 2026-05-23: Lap alerts were confirmed in the alert feed and Discord bridge acknowledgements.
 - [x] 2026-05-23: Lap/best-lap alerts were fixed to use completed-lap history for spoken deltas and HUD best-lap consistency.
+- [x] 2026-05-23: `quiet_driver_ai` was added for conversational local-LLM Q&A without a wake phrase.
+- [x] 2026-05-23: Deterministic fuel-burn and last-lap fuel-used questions were added.
+- [x] 2026-05-23: `gemma-4-e4b-it-4bit` tested better than the earlier Qwen 9B setup for live response latency.
+- [x] 2026-05-23: Slow LLM/STT/TTS work was moved off the FastAPI event loop to prevent false telemetry-stale flaps.
+- [x] 2026-05-23: Spoken telemetry connection alerts were throttled/silenced to stop stale/connected voice loops.
 - [ ] Full short-race validation with lap summaries, final lap, and finish behavior.
 - [ ] Endurance-style stint validation with fuel burn, pit advice, and fuel-margin calls.
 - [ ] Live validation of every supported spoken command.
@@ -201,6 +215,7 @@ The Discord bot is the race radio: it listens to your headset in a private Disco
 - [x] Discord bridge spike: bot joins voice, monitors driver audio, plays test TTS response.
 - [x] Voice commands: VAD/STT endpoint, wake phrase mode, quiet-driver mode, Discord audio loop.
 - [x] LLM adapter: OpenAI-compatible race-state Q&A and summaries.
+- [x] Conversational mode hardening: response priority, non-blocking LLM calls, request date/time context, and connection-alert throttling.
 - [x] Integration hardening: reconnects, stale telemetry edge cases, bot errors, config validation, logging.
 - [x] Live GT7 smoke validation: PS5 discovery, stable packet rate, HUD/API on-track updates.
 - [ ] Live GT7 validation: full short race, endurance-style race, replay comparison, alert tuning.
@@ -232,6 +247,7 @@ The Discord bot is the race radio: it listens to your headset in a private Disco
   - [ ] Live spoken fuel/pit/lap command round trips through Discord.
   - [ ] Bot ignores its own speech.
 - LLM tests:
+  - [x] Request-context payload includes current date/time for free-form questions.
   - [ ] Fixed race-state questions.
   - [ ] Unsupported-data answers.
   - [ ] Timeout/fallback behavior.

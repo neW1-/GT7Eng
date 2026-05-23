@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { buildSlashCommands } from "../src/commands.js";
 import { assertRuntimeConfig, parseBoolean, readConfig } from "../src/config.js";
 
 test("readConfig applies safe defaults without credentials", () => {
@@ -32,6 +33,19 @@ test("readConfig parses env overrides", () => {
   assert.equal(config.stt.enabled, true);
   assert.equal(config.stt.minSegmentMs, 300);
   assert.equal(config.stt.maxSegmentMs, 5000);
+});
+
+test("readConfig accepts quiet_driver_ai as default mode", () => {
+  const config = readConfig({ DEFAULT_AUDIO_MODE: "quiet_driver_ai" });
+
+  assert.equal(config.audio.defaultMode, "quiet_driver_ai");
+});
+
+test("slash command mode choices include quiet_driver_ai", () => {
+  const modeCommand = buildSlashCommands().find((command) => command.name === "mode");
+  const choices = modeCommand.options[0].choices.map((choice) => choice.value);
+
+  assert.ok(choices.includes("quiet_driver_ai"));
 });
 
 test("parseBoolean rejects ambiguous values", () => {

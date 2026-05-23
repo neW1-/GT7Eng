@@ -26,3 +26,14 @@ def test_status_reports_audio_engines():
     assert "tts" in payload["audio"]
     assert "last" in payload["voice"]
     assert payload["config"]["llm"]["intent_repair_enabled"] is True
+
+
+def test_discord_mode_endpoint_accepts_quiet_driver_ai():
+    app = create_app(AppConfig(), telemetry_mode="none")
+    client = TestClient(app)
+
+    response = client.post("/discord/mode", json={"mode": "quiet_driver_ai"})
+
+    assert response.status_code == 200
+    assert response.json()["mode"] == "quiet_driver_ai"
+    assert client.get("/api/status").json()["voice"]["mode"] == "quiet_driver_ai"

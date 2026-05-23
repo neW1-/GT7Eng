@@ -15,6 +15,19 @@ def test_quiet_driver_accepts_strict_fuel_command():
     assert "liter" not in result["response"].lower()
 
 
+def test_discord_response_takes_priority_over_connection_alert():
+    service = RaceEngineerService(AppConfig())
+    service.snapshot
+    service.update_frame(synthetic_frame(fuel_level=80.0))
+
+    result = service.handle_transcript("how is my fuel", "discord")
+    jobs = service.next_voice_jobs(limit=10)
+
+    assert result["intent"] == "fuel_status"
+    assert jobs[0]["text"] == result["response"]
+    assert all(job["category"] != "system" for job in jobs)
+
+
 def test_wake_phrase_ignores_without_phrase():
     config = AppConfig(voice_mode="wake_phrase", wake_phrase="engineer")
     service = RaceEngineerService(config)
@@ -107,6 +120,32 @@ def test_quiet_driver_unknown_transcript_does_not_call_llm():
     assert result["intent"] == "unknown_quiet_driver"
 
 
+def test_quiet_driver_ai_unknown_transcript_can_fall_back_to_llm():
+    config = AppConfig(voice_mode="quiet_driver_ai")
+    service = RaceEngineerService(config)
+    service.llm.ask = lambda *_args, **_kwargs: "Fuel burn is stable."
+
+    result = service.handle_transcript("summarize my stint", "discord", confidence=0.7)
+
+    assert result["handled"] is True
+    assert result["intent"] == "llm_question"
+    assert "stable" in result["response"]
+
+
+def test_quiet_driver_ai_low_confidence_unknown_transcript_is_ignored():
+    config = AppConfig(voice_mode="quiet_driver_ai")
+    config.stt.min_confidence = 0.8
+    service = RaceEngineerService(config)
+    service.llm.ask = lambda *_args, **_kwargs: (_ for _ in ()).throw(
+        AssertionError("Low-confidence unknown speech should not use free-form LLM")
+    )
+
+    result = service.handle_transcript("summarize my stint", "discord", confidence=0.2)
+
+    assert result["ignored"] is True
+    assert result["intent"] == "low_confidence"
+
+
 def test_quiet_driver_unknown_transcript_can_use_llm_intent_repair():
     service = RaceEngineerService(AppConfig())
     service.update_frame(synthetic_frame(current_position=7))
@@ -136,6 +175,54 @@ def test_low_confidence_llm_intent_repair_is_ignored():
 
     assert result["ignored"] is True
     assert result["intent"] == "unknown_quiet_driver"
+
+
+def test_fuel_burn_rate_question_uses_deterministic_percentage():
+    service = RaceEngineerService(AppConfig())
+    service.update_frame(synthetic_frame(timestamp=1.0, current_lap=1, fuel_level=80.0))
+    service.update_frame(
+        synthetic_frame(
+            timestamp=2.0,
+            current_lap=2,
+            fuel_level=72.0,
+            last_lap_time_ms=90_000,
+        )
+    )
+
+    result = service.handle_command("what's my fuel burn rate")
+
+    assert result["handled"] is True
+    assert result["intent"] == "fuel_burn_rate"
+    assert result["response"] == "Fuel burn is 8.0 percent per lap."
+
+
+def test_last_lap_fuel_question_uses_deterministic_percentage():
+    service = RaceEngineerService(AppConfig())
+    service.update_frame(synthetic_frame(timestamp=1.0, current_lap=1, fuel_level=80.0))
+    service.update_frame(
+        synthetic_frame(
+            timestamp=2.0,
+            current_lap=2,
+            fuel_level=72.0,
+            last_lap_time_ms=90_000,
+        )
+    )
+
+    result = service.handle_command("how much fuel did I use last lap")
+
+    assert result["handled"] is True
+    assert result["intent"] == "last_lap_fuel"
+    assert result["response"] == "Last lap used 8.0 percent fuel."
+
+
+def test_fuel_burn_question_needs_completed_lap():
+    service = RaceEngineerService(AppConfig())
+
+    result = service.handle_command("what is my fuel burn rate")
+
+    assert result["handled"] is True
+    assert result["intent"] == "fuel_burn_rate"
+    assert result["response"] == "Need one completed lap for fuel burn."
 
 
 def test_wake_phrase_unknown_transcript_can_fall_back_to_llm():

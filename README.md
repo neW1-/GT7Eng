@@ -27,6 +27,9 @@ Local Gran Turismo 7 race engineer for macOS. It auto-discovers the PS5 via `gt-
 - [x] Spoken lap/best-lap alerts use completed-lap history instead of unstable raw packet best-lap data.
 - [x] Voice debug HUD shows transcript, confidence, intent, and LLM repair status.
 - [x] Optional LLM intent repair maps noisy voice transcripts to deterministic commands.
+- [x] `quiet_driver_ai` conversational mode keeps strict commands first, then uses the local LLM for high-confidence free-form questions.
+- [x] Deterministic fuel-burn answers for “fuel burn rate” and “fuel used last lap.”
+- [x] LLM/STT/TTS calls run off the FastAPI event loop so slow local generation does not starve telemetry ingestion.
 
 ## Todo
 
@@ -40,6 +43,7 @@ Local Gran Turismo 7 race engineer for macOS. It auto-discovers the PS5 via `gt-
 - [x] Wire Discord received audio into STT/VAD instead of only monitoring driver audio packets.
 - [x] Add wake-phrase detection for `wake_phrase` mode.
 - [x] Add stricter command grammar and confidence thresholds for `quiet_driver` mode.
+- [x] Add `quiet_driver_ai` mode for conversational local-LLM Q&A without a wake phrase.
 - [x] Add live Discord end-to-end STT test with a private server, configured driver user, and headset.
 - [x] Add live GT7 validation with PS5 auto-discovery, packet-rate monitoring, and on-track telemetry.
 - [x] Update fuel/pit strategy wording so negative finish margin does not always mean “box this lap.”
@@ -50,6 +54,7 @@ Local Gran Turismo 7 race engineer for macOS. It auto-discovers the PS5 via `gt-
 - [ ] Tune Discord STT confidence, segment timing, and false-positive suppression from more headset samples.
 - [ ] Add local/LAN OpenAI-compatible LLM smoke tests and model setup docs.
 - [x] Add LLM intent repair for noisy Discord STT transcripts.
+- [x] Throttle spoken telemetry-stale alerts and keep telemetry-connected alerts silent to avoid voice loops during packet flaps.
 - [x] Add richer incident/coaching monitors for lockups, wheelspin, spins, and impact-like events.
 - [ ] Add off-track detection if GT7 exposes a reliable signal.
 - [ ] Add HUD controls for verbosity presets and voice mode.
@@ -176,24 +181,36 @@ GT7ENG_PIPER_MODEL=/path/to/en_GB-alba-medium.onnx
 GT7ENG_RADIO_EFFECTS=true
 ```
 
-`quiet_driver` mode normally ignores unknown transcripts, but can use the configured LLM as an intent-repair layer. Intent repair only maps noisy STT text to known deterministic commands; the race answer still comes from local telemetry logic. `wake_phrase` mode can also fall back to the configured LLM after the wake phrase for flexible Q&A.
+Voice modes:
+
+- `quiet_driver`: no wake phrase; strict deterministic commands only. Unknown speech is ignored except for optional LLM intent repair.
+- `quiet_driver_ai`: no wake phrase; strict deterministic commands and intent repair run first, then high-confidence unknown speech can use the configured local LLM for conversational race-state Q&A.
+- `wake_phrase`: requires the configured wake phrase, then supports deterministic commands and LLM fallback.
+
+Deterministic answers still own race math. Questions like “what’s my fuel burn rate?” and “how much fuel did I use last lap?” are answered from completed-lap telemetry in percent, not by the LLM. Free-form LLM answers receive only current race state plus request date/time context and must say unavailable for missing telemetry.
+
+Discord driver requests are prioritized over pending alert playback. The bridge clears queued local audio and pauses voice-job polling while Python handles a driver utterance, and Python drops queued system connection alerts for Discord requests. LLM, STT, and TTS work runs in worker threads so slow local generation does not block telemetry ingestion.
+
+Telemetry connection alerts are intentionally restrained: `Telemetry connected` stays visible in logs/HUD but is not spoken, and spoken `Telemetry stale` alerts are throttled to avoid stale/connected voice loops if packets briefly flap around the stale threshold.
 
 ## Suggested 16 GB Apple Silicon Setup
 
-For a MacBook Air M4 with 16 GB RAM, try an MLX/oMLX 4-bit 9B model first. The LLM is used for intent repair, phrasing, and flexible Q&A; fuel, pit, lap, and alert logic stays deterministic.
+For a MacBook Air M4 with 16 GB RAM, `gemma-4-e4b-it-4bit` has tested better for live conversational Q&A than the earlier 9B Qwen setup because it responds faster while STT, TTS, Discord, HUD, and telemetry are all running. The LLM is used for intent repair, phrasing, and flexible Q&A; fuel, pit, lap, and alert logic stays deterministic.
 
 Recommended starting point:
 
 ```bash
 GT7ENG_LLM_BASE_URL=http://127.0.0.1:8000/v1
-GT7ENG_LLM_MODEL=Qwen3.5-9B-OptiQ-4bit
+GT7ENG_LLM_MODEL=gemma-4-e4b-it-4bit
 GT7ENG_LLM_API_KEY=your_omlx_key
-GT7ENG_LLM_TIMEOUT=4
+GT7ENG_LLM_TIMEOUT=20
 GT7ENG_LLM_MAX_TOKENS=80
 GT7ENG_LLM_DISABLE_THINKING=true
 GT7ENG_LLM_INTENT_REPAIR=true
 GT7ENG_LLM_INTENT_REPAIR_MIN_CONFIDENCE=0.55
 ```
+
+`Qwen3.5-9B-OptiQ-4bit` remains usable, but it was slower in live testing. Larger models can improve broad reasoning or richer summaries, but they are usually worse for driving if first-token latency climbs above a few seconds.
 
 Keep STT reasonably light while Discord, the HUD, TTS, and telemetry are all running. On the current 16 GB M4 test machine, `base.en` is the next model to try for better headset transcription; drop back to `tiny.en` if latency becomes noticeable:
 
@@ -205,7 +222,7 @@ GT7ENG_STT_MIN_CONFIDENCE=0.45
 DISCORD_STT_ENABLED=true
 ```
 
-If the 8B model feels sluggish during live racing, try a 4B MLX model. If STT accuracy is poor, try `base.en` before moving to larger Whisper models. Avoid 20B-class models for live race use on 16 GB unless STT is off or latency does not matter.
+If `gemma-4-e4b-it-4bit` still feels sluggish during live racing, lower `GT7ENG_LLM_MAX_TOKENS` before moving to a larger model. If STT accuracy is poor, try `base.en` before moving to larger Whisper models. Avoid 20B-class models for live race use on 16 GB unless STT is off or latency does not matter.
 
 ## Full Discord And Local Audio Setup Notes
 
@@ -236,7 +253,7 @@ DISCORD_VOICE_CHANNEL_ID=your_private_voice_channel_id
 DISCORD_DRIVER_USER_ID=your_discord_user_id
 
 PYTHON_SERVICE_URL=http://127.0.0.1:8001
-DEFAULT_AUDIO_MODE=quiet_driver
+DEFAULT_AUDIO_MODE=quiet_driver_ai
 AUTO_JOIN_ON_READY=true
 DISCORD_STT_ENABLED=false
 ```
@@ -286,4 +303,4 @@ Quick troubleshooting:
 - Bot joins but does not speak: confirm `PYTHON_SERVICE_URL`, run `/radio_check`, check Python logs, and rerun `npm install` so the current Discord voice/encryption dependencies are installed.
 - Bot does not hear you: confirm `DISCORD_DRIVER_USER_ID`, `DISCORD_STT_ENABLED=true`, and that you are in the configured voice channel.
 - STT does not work: confirm `GT7ENG_STT_ENABLED=true` and install with `pip install -e ".[dev,voice]"`.
-- LLM answers are slow: try a 4B MLX model or lower `GT7ENG_LLM_MAX_TOKENS`.
+- LLM answers are slow: use `gemma-4-e4b-it-4bit`, keep `GT7ENG_LLM_MAX_TOKENS` low, and confirm the Python service plus Discord bridge were restarted after changing `.env`.

@@ -24,8 +24,10 @@ export function parseInteger(value, defaultValue, name) {
 export function readConfig(env = process.env) {
   const source = env === process.env ? { ...readDotEnv(), ...env } : env;
   const mode = source.DEFAULT_AUDIO_MODE || "quiet_driver";
-  if (!["wake_phrase", "quiet_driver", "silent"].includes(mode)) {
-    throw new Error("DEFAULT_AUDIO_MODE must be one of: wake_phrase, quiet_driver, silent");
+  if (!["wake_phrase", "quiet_driver", "quiet_driver_ai", "silent"].includes(mode)) {
+    throw new Error(
+      "DEFAULT_AUDIO_MODE must be one of: wake_phrase, quiet_driver, quiet_driver_ai, silent"
+    );
   }
 
   return {
