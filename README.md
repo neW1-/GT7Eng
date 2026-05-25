@@ -77,6 +77,12 @@ Optional local voice input/output dependencies:
 pip install -e ".[dev,voice]"
 ```
 
+Optional BLE pixel display dependency:
+
+```bash
+pip install -e ".[dev,pixel-display]"
+```
+
 ## Run
 
 ```bash
@@ -107,6 +113,40 @@ GT7ENG_RACE_DURATION_MINUTES=30 gt7eng run --host 0.0.0.0 --port 8001
 
 In timed race mode, the HUD Race card shows race duration and time left. “How many laps?” returns lap plus time remaining, and “how much time left?” returns the remaining race time. The timer only counts while the session phase is `racing`; it freezes while GT7 reports `paused`.
 You can also set the duration at runtime by voice or typed chat, for example: “set race duration to 30 minutes.”
+
+## BLE Pixel Gear Indicator
+
+GT7Eng can optionally drive an iPixel Color-compatible BLE matrix through `pypixelcolor`. The service keeps one BLE connection open, renders a large gear indicator, and adds a configurable rev bar. GT7 telemetry `min_alert_rpm` and `max_alert_rpm` are used for the rev fill when available, with `.env` RPM fallback values for cars or telemetry samples that do not expose that range.
+
+Start by installing the optional extra and scanning for the display address:
+
+```bash
+pip install -e ".[dev,pixel-display]"
+pypixelcolor --scan
+```
+
+Then enable it in `.env`:
+
+```bash
+GT7ENG_PIXEL_DISPLAY_ENABLED=true
+GT7ENG_PIXEL_DISPLAY_ADDRESS=your-device-address-or-corebluetooth-uuid
+GT7ENG_PIXEL_DISPLAY_REV_POSITION=bottom
+GT7ENG_PIXEL_DISPLAY_COLOR_THEME=simdt_blue
+```
+
+Color themes are `simdt_blue`, `warm_amber`, `race_gyr`, and `custom`. For long night stints, switch to amber with:
+
+```bash
+GT7ENG_PIXEL_DISPLAY_COLOR_THEME=warm_amber
+```
+
+For exact colors, set `GT7ENG_PIXEL_DISPLAY_COLOR_THEME=custom` and provide any of `GT7ENG_PIXEL_DISPLAY_GEAR_COLOR`, `GT7ENG_PIXEL_DISPLAY_REV_LOW_COLOR`, `GT7ENG_PIXEL_DISPLAY_REV_MID_COLOR`, `GT7ENG_PIXEL_DISPLAY_REV_HIGH_COLOR`, or `GT7ENG_PIXEL_DISPLAY_SHIFT_COLOR` as six-digit hex colors.
+
+Preview the renderer without hardware:
+
+```bash
+gt7eng pixel-preview /private/tmp/gt7eng-pixel-preview.png --theme warm_amber
+```
 
 ## Replay
 

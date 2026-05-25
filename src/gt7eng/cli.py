@@ -10,6 +10,8 @@ import sys
 from pathlib import Path
 
 from .config import AppConfig, load_env_file
+from .models import RaceSnapshot
+from .pixel_display import PixelDisplayRenderer
 from .server import run_server
 from .service import RaceEngineerService
 from .telemetry import CaptureWriter, GTTelemTelemetrySource, ReplayTelemetrySource
@@ -39,6 +41,23 @@ def main(argv: list[str] | None = None) -> int:
     capture_parser = sub.add_parser("capture", help="Capture live telemetry to JSONL.")
     capture_parser.add_argument("file", type=Path)
 
+    preview_parser = sub.add_parser(
+        "pixel-preview",
+        help="Render a hardware-free pixel display preview PNG.",
+    )
+    preview_parser.add_argument("output", type=Path)
+    preview_parser.add_argument("--gear", type=int, default=3)
+    preview_parser.add_argument("--rpm-percent", type=float, default=0.85)
+    preview_parser.add_argument("--shift", action="store_true")
+    preview_parser.add_argument("--idle", action="store_true")
+    preview_parser.add_argument("--width", type=int, default=64)
+    preview_parser.add_argument("--height", type=int, default=64)
+    preview_parser.add_argument(
+        "--theme",
+        choices=["simdt_blue", "warm_amber", "race_gyr", "custom"],
+    )
+    preview_parser.add_argument("--rev-position", choices=["top", "bottom"])
+
     args = parser.parse_args(argv)
     config = AppConfig.from_env()
 
@@ -57,6 +76,19 @@ def main(argv: list[str] | None = None) -> int:
         return asyncio.run(_replay(config, args.file, args.realtime))
     if args.command == "capture":
         return asyncio.run(_capture(config, args.file))
+    if args.command == "pixel-preview":
+        return _pixel_preview(
+            config,
+            args.output,
+            gear=args.gear,
+            rpm_percent=args.rpm_percent,
+            shift=args.shift,
+            idle=args.idle,
+            width=args.width,
+            height=args.height,
+            theme=args.theme,
+            rev_position=args.rev_position,
+        )
     return 1
 
 
@@ -98,6 +130,7 @@ def _doctor(config: AppConfig, *, skip_ps: bool) -> int:
         f"model={config.stt.model} "
         f"package={'ok' if importlib.util.find_spec('faster_whisper') else 'missing'}"
     )
+    pixel_ok = _doctor_pixel_display(config)
 
     if not skip_ps and checks["gt-telem"]:
         try:
@@ -113,7 +146,7 @@ def _doctor(config: AppConfig, *, skip_ps: bool) -> int:
     elif config.ps_ip:
         print(f"ps5        manual fallback configured: {config.ps_ip}")
 
-    return 0 if all(checks.values()) else 1
+    return 0 if all(checks.values()) and pixel_ok else 1
 
 
 def _udp_bind_ok(port: int) -> bool:
@@ -150,6 +183,88 @@ async def _capture(config: AppConfig, path: Path) -> int:
         pass
     finally:
         service.stop_capture()
+    return 0
+
+
+def _doctor_pixel_display(config: AppConfig) -> bool:
+    pixel = config.pixel_display
+    package_ok = importlib.util.find_spec("pypixelcolor") is not None
+    if not pixel.enabled:
+        print(
+            f"pixel      disabled package={'ok' if package_ok else 'missing'} "
+            f"theme={pixel.color_theme}"
+        )
+        return True
+    if not pixel.address:
+        print(
+            f"pixel      enabled package={'ok' if package_ok else 'missing'} "
+            "address=missing"
+        )
+        return False
+    if not package_ok:
+        print(
+            "pixel      enabled package=missing "
+            "install with: pip install -e '.[pixel-display]'"
+        )
+        return False
+    try:
+        info = asyncio.run(_pixel_display_probe(pixel.address))
+    except Exception as exc:
+        print(f"pixel      connection failed: {exc}")
+        return False
+    print(
+        f"pixel      connected {getattr(info, 'width', '?')}x{getattr(info, 'height', '?')} "
+        f"theme={pixel.color_theme} rev={pixel.rev_position}"
+    )
+    return True
+
+
+async def _pixel_display_probe(address: str):
+    import pypixelcolor
+
+    client = pypixelcolor.AsyncClient(address)
+    try:
+        await client.connect()
+        return client.get_device_info()
+    finally:
+        await client.disconnect()
+
+
+def _pixel_preview(
+    config: AppConfig,
+    output: Path,
+    *,
+    gear: int,
+    rpm_percent: float,
+    shift: bool,
+    idle: bool,
+    width: int,
+    height: int,
+    theme: str | None,
+    rev_position: str | None,
+) -> int:
+    if theme is not None:
+        config.pixel_display.color_theme = theme  # type: ignore[assignment]
+    if rev_position is not None:
+        config.pixel_display.rev_position = rev_position  # type: ignore[assignment]
+    renderer = PixelDisplayRenderer(config.pixel_display, width=width, height=height)
+    if idle:
+        snapshot = RaceSnapshot(connected=False, session_phase="stale")
+    else:
+        rpm = max(0.0, min(1.0, rpm_percent)) * 100.0
+        snapshot = RaceSnapshot(
+            connected=True,
+            session_phase="racing",
+            engine_rpm=rpm,
+            min_alert_rpm=0.0,
+            max_alert_rpm=100.0,
+            current_gear=gear,
+            rev_limit=shift,
+        )
+    frame = renderer.render_snapshot(snapshot)
+    output.parent.mkdir(parents=True, exist_ok=True)
+    output.write_bytes(frame.to_png())
+    print(f"pixel preview written: {output}")
     return 0
 
 

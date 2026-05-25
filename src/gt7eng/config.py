@@ -19,6 +19,8 @@ AlertCategory = Literal[
 ]
 Verbosity = Literal["off", "critical", "balanced", "detailed"]
 VoiceMode = Literal["wake_phrase", "quiet_driver", "quiet_driver_ai"]
+PixelRevPosition = Literal["top", "bottom"]
+PixelColorTheme = Literal["simdt_blue", "warm_amber", "race_gyr", "custom"]
 
 
 DEFAULT_VERBOSITY: dict[AlertCategory, Verbosity] = {
@@ -107,6 +109,27 @@ class TTSConfig:
 
 
 @dataclass(slots=True)
+class PixelDisplayConfig:
+    enabled: bool = False
+    address: str = ""
+    update_hz: float = 10.0
+    rev_position: PixelRevPosition = "bottom"
+    brightness: int = 60
+    dim_brightness: int = 12
+    orientation: int = 0
+    shift_percent: float = 0.96
+    flash_hz: float = 8.0
+    color_theme: PixelColorTheme = "simdt_blue"
+    gear_color: str = ""
+    rev_low_color: str = ""
+    rev_mid_color: str = ""
+    rev_high_color: str = ""
+    shift_color: str = ""
+    rpm_min: float | None = None
+    rpm_max: float | None = None
+
+
+@dataclass(slots=True)
 class AppConfig:
     preset: str = "endurance"
     ps_ip: str | None = None
@@ -125,6 +148,7 @@ class AppConfig:
     discord: DiscordConfig = field(default_factory=DiscordConfig)
     stt: STTConfig = field(default_factory=STTConfig)
     tts: TTSConfig = field(default_factory=TTSConfig)
+    pixel_display: PixelDisplayConfig = field(default_factory=PixelDisplayConfig)
 
     @classmethod
     def from_env(cls) -> "AppConfig":
@@ -177,6 +201,51 @@ class AppConfig:
                 radio_effects=_bool(os.getenv("GT7ENG_RADIO_EFFECTS"), False),
                 cache_dir=os.getenv("GT7ENG_TTS_CACHE_DIR", "/private/tmp/gt7eng-tts"),
             ),
+            pixel_display=PixelDisplayConfig(
+                enabled=_bool(os.getenv("GT7ENG_PIXEL_DISPLAY_ENABLED"), False),
+                address=os.getenv("GT7ENG_PIXEL_DISPLAY_ADDRESS", "").strip(),
+                update_hz=_float_range(
+                    os.getenv("GT7ENG_PIXEL_DISPLAY_UPDATE_HZ"), 10.0, 1.0, 30.0
+                ),
+                rev_position=_rev_position(
+                    os.getenv("GT7ENG_PIXEL_DISPLAY_REV_POSITION", "bottom")
+                ),
+                brightness=_int_range(
+                    os.getenv("GT7ENG_PIXEL_DISPLAY_BRIGHTNESS"), 60, 0, 100
+                ),
+                dim_brightness=_int_range(
+                    os.getenv("GT7ENG_PIXEL_DISPLAY_DIM_BRIGHTNESS"), 12, 0, 100
+                ),
+                orientation=_int_range(
+                    os.getenv("GT7ENG_PIXEL_DISPLAY_ORIENTATION"), 0, 0, 3
+                ),
+                shift_percent=_float_range(
+                    os.getenv("GT7ENG_PIXEL_DISPLAY_SHIFT_PERCENT"), 0.96, 0.0, 1.0
+                ),
+                flash_hz=_float_range(
+                    os.getenv("GT7ENG_PIXEL_DISPLAY_FLASH_HZ"), 8.0, 1.0, 20.0
+                ),
+                color_theme=_color_theme(
+                    os.getenv("GT7ENG_PIXEL_DISPLAY_COLOR_THEME", "simdt_blue")
+                ),
+                gear_color=_hex_color_or_empty(
+                    os.getenv("GT7ENG_PIXEL_DISPLAY_GEAR_COLOR")
+                ),
+                rev_low_color=_hex_color_or_empty(
+                    os.getenv("GT7ENG_PIXEL_DISPLAY_REV_LOW_COLOR")
+                ),
+                rev_mid_color=_hex_color_or_empty(
+                    os.getenv("GT7ENG_PIXEL_DISPLAY_REV_MID_COLOR")
+                ),
+                rev_high_color=_hex_color_or_empty(
+                    os.getenv("GT7ENG_PIXEL_DISPLAY_REV_HIGH_COLOR")
+                ),
+                shift_color=_hex_color_or_empty(
+                    os.getenv("GT7ENG_PIXEL_DISPLAY_SHIFT_COLOR")
+                ),
+                rpm_min=_float_or_none(os.getenv("GT7ENG_PIXEL_DISPLAY_RPM_MIN")),
+                rpm_max=_float_or_none(os.getenv("GT7ENG_PIXEL_DISPLAY_RPM_MAX")),
+            ),
         )
 
     def set_preset(self, preset: str) -> None:
@@ -194,6 +263,19 @@ def _voice_mode(value: str) -> VoiceMode:
     return "quiet_driver"
 
 
+def _rev_position(value: str) -> PixelRevPosition:
+    if value.strip().lower() == "top":
+        return "top"
+    return "bottom"
+
+
+def _color_theme(value: str) -> PixelColorTheme:
+    normalized = value.strip().lower()
+    if normalized in {"warm_amber", "race_gyr", "custom"}:
+        return normalized  # type: ignore[return-value]
+    return "simdt_blue"
+
+
 def _bool(value: str | None, default: bool) -> bool:
     if value is None or value == "":
         return default
@@ -208,6 +290,41 @@ def _float_or_none(value: str | None) -> float | None:
     except ValueError:
         return None
     return parsed if parsed > 0 else None
+
+
+def _float_range(value: str | None, default: float, minimum: float, maximum: float) -> float:
+    if value is None or value.strip() == "":
+        return default
+    try:
+        parsed = float(value)
+    except ValueError:
+        return default
+    if parsed < minimum or parsed > maximum:
+        return default
+    return parsed
+
+
+def _int_range(value: str | None, default: int, minimum: int, maximum: int) -> int:
+    if value is None or value.strip() == "":
+        return default
+    try:
+        parsed = int(value)
+    except ValueError:
+        return default
+    if parsed < minimum or parsed > maximum:
+        return default
+    return parsed
+
+
+def _hex_color_or_empty(value: str | None) -> str:
+    if value is None:
+        return ""
+    normalized = value.strip().lstrip("#").lower()
+    if len(normalized) != 6:
+        return ""
+    if any(ch not in "0123456789abcdef" for ch in normalized):
+        return ""
+    return normalized
 
 
 def load_env_file(path: str | os.PathLike[str] = ".env") -> None:

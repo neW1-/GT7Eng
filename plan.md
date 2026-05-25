@@ -193,6 +193,23 @@ The live voice path now supports short-turn conversational memory. Deterministic
   - [ ] Discord bot status in HUD.
   - [ ] Settings for verbosity presets.
 
+## BLE Pixel Gear Indicator
+- [x] Add optional `pixel-display` dependency extra for `pypixelcolor` so BLE packages are not required for normal GT7Eng installs.
+- [x] Add centralized `.env` config for enabling/disabling the display, BLE address, update rate, brightness, orientation, rev bar position, shift flash behavior, color themes, custom hex colors, and optional RPM fallback values.
+- [x] Configure the local `.env` to connect to `LED_BLE_F16C3591` using CoreBluetooth UUID `7D157B3A-F9F5-06B7-DEC5-A962DAAB7E72`.
+- [x] Keep a persistent `pypixelcolor.AsyncClient` BLE connection open while GT7Eng is running.
+- [x] Render a large gear indicator with configurable top/bottom rev bar, defaulting to bottom.
+- [x] Support `simdt_blue`, `warm_amber`, `race_gyr`, and `custom` color themes so night stints can use amber/orange/red instead of blue.
+- [x] Normalize GT7 `min_alert_rpm` and `max_alert_rpm` into telemetry snapshots and use them for rev-fill percentage before falling back to configured RPM values.
+- [x] Flash the gear at shift point when GT7 reports `rev_limit` or the configured shift percentage is reached.
+- [x] Show dim `--` when telemetry is stale, idle, loading, paused, or not racing.
+- [x] Cap display sends at 10 Hz by default, dedupe identical frames, and use latest-snapshot rendering to avoid BLE backlog.
+- [x] Reconnect with capped backoff if BLE drops while keeping telemetry, HUD, and Discord running.
+- [x] Send a black frame on shutdown instead of calling `pypixelcolor.clear()`, because the upstream clear command erases stored device content.
+- [x] Add pixel display state to `/api/status`, the HUD topbar, and `gt7eng doctor`.
+- [x] Add `gt7eng pixel-preview <output.png>` for hardware-free layout and color-theme verification.
+- [ ] Live-test the BLE display on the rig and tune brightness/theme/update rate after real driving feedback.
+
 ## Current Live Validation
 - [x] 2026-05-22: PS5 auto-discovered on the LAN.
 - [x] 2026-05-22: GT7 on-track telemetry reached the service at roughly 60 Hz.

@@ -82,6 +82,8 @@ class TelemetryFrame:
     packet_id: int | None = None
     speed_kph: float | None = None
     engine_rpm: float | None = None
+    min_alert_rpm: float | None = None
+    max_alert_rpm: float | None = None
     current_gear: int | None = None
     suggested_gear: int | None = None
     throttle: int | None = None
@@ -144,6 +146,8 @@ class TelemetryFrame:
             packet_id=_int_or_none(getattr(telemetry, "packet_id", None)),
             speed_kph=_num_or_none(getattr(telemetry, "speed_kph", None)),
             engine_rpm=_num_or_none(getattr(telemetry, "engine_rpm", None)),
+            min_alert_rpm=_num_or_none(getattr(telemetry, "min_alert_rpm", None)),
+            max_alert_rpm=_num_or_none(getattr(telemetry, "max_alert_rpm", None)),
             current_gear=_int_or_none(getattr(telemetry, "current_gear", None)),
             suggested_gear=_int_or_none(getattr(telemetry, "suggested_gear", None)),
             throttle=_int_or_none(getattr(telemetry, "throttle", None)),
@@ -253,6 +257,8 @@ class RaceSnapshot:
     pit_recommendation: str = "No fuel data yet."
     speed_kph: float | None = None
     engine_rpm: float | None = None
+    min_alert_rpm: float | None = None
+    max_alert_rpm: float | None = None
     current_gear: int | None = None
     tire_temps: WheelValues = field(default_factory=WheelValues)
     tire_radius: WheelValues = field(default_factory=WheelValues)

@@ -186,6 +186,8 @@ class RaceState:
             ),
             speed_kph=frame.speed_kph,
             engine_rpm=frame.engine_rpm,
+            min_alert_rpm=frame.min_alert_rpm,
+            max_alert_rpm=frame.max_alert_rpm,
             current_gear=frame.current_gear,
             tire_temps=frame.tire_temps,
             tire_radius=frame.tire_radius,
