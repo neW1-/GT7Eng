@@ -61,4 +61,6 @@ def test_hud_pixel_status_uses_runtime_or_config_enabled_state():
     assert "pixel live" in app_js
     assert "pixel wait" in app_js
     assert "pixel warn" in app_js
-    assert "pixel-layout-2" in index_html
+    assert "suggestedGear.textContent = snap.suggested_gear" in app_js
+    assert 'id="suggested-gear"' in index_html
+    assert "suggested-gear-hud-1" in index_html

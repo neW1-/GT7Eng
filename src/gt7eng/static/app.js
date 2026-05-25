@@ -21,6 +21,7 @@ const fields = {
   speed: document.querySelector("#speed"),
   rpm: document.querySelector("#rpm"),
   gear: document.querySelector("#gear"),
+  suggestedGear: document.querySelector("#suggested-gear"),
   tireHot: document.querySelector("#tire-hot"),
   tireSpread: document.querySelector("#tire-spread"),
   tireWear: document.querySelector("#tire-wear"),
@@ -122,6 +123,7 @@ function render(data) {
   fields.speed.textContent = fmt(snap.speed_kph, " kph", 0);
   fields.rpm.textContent = fmt(snap.engine_rpm, "", 0);
   fields.gear.textContent = snap.current_gear ?? "--";
+  fields.suggestedGear.textContent = snap.suggested_gear ?? "--";
   fields.tireHot.textContent = fmt(wheelMax(snap.tire_temps), "°", 0);
   fields.tireSpread.textContent = fmt(wheelSpread(snap.tire_temps), "°", 0);
   fields.tireWear.textContent = fmt(wheelMax(snap.tire_wear_percent), "%", 0);
