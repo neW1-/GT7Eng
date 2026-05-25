@@ -131,11 +131,17 @@ Then enable it in `.env`:
 GT7ENG_PIXEL_DISPLAY_ENABLED=true
 GT7ENG_PIXEL_DISPLAY_ADDRESS=your-device-address-or-corebluetooth-uuid
 GT7ENG_PIXEL_DISPLAY_REV_POSITION=bottom
+GT7ENG_PIXEL_DISPLAY_SIZE_SOURCE=auto
+GT7ENG_PIXEL_DISPLAY_WIDTH=64
+GT7ENG_PIXEL_DISPLAY_HEIGHT=64
+GT7ENG_PIXEL_DISPLAY_GEAR_LAYOUT=current
 GT7ENG_PIXEL_DISPLAY_REV_SCALE=wide
 GT7ENG_PIXEL_DISPLAY_REV_START_PERCENT=0.60
 GT7ENG_PIXEL_DISPLAY_SHIFT_MODE=rev_limit
 GT7ENG_PIXEL_DISPLAY_COLOR_THEME=simdt_blue
 ```
+
+Gear layouts are `current` for the main gear only and `current_suggested` to add GT7's smaller suggested gear on the right. Display sizing defaults to `auto`, which trusts the BLE-reported matrix size; `WIDTH` and `HEIGHT` are fallback values unless `GT7ENG_PIXEL_DISPLAY_SIZE_SOURCE=config` is set.
 
 Color themes are `simdt_blue`, `warm_amber`, `race_gyr`, and `custom`. For long night stints, switch to amber with:
 
@@ -148,7 +154,7 @@ For exact colors, set `GT7ENG_PIXEL_DISPLAY_COLOR_THEME=custom` and provide any 
 Preview the renderer without hardware:
 
 ```bash
-gt7eng pixel-preview /private/tmp/gt7eng-pixel-preview.png --theme warm_amber --rpm 7200 --max-alert-rpm 9000
+gt7eng pixel-preview /private/tmp/gt7eng-pixel-preview.png --theme warm_amber --gear 4 --suggested-gear 3 --rpm 7200 --max-alert-rpm 9000
 ```
 
 ## Replay

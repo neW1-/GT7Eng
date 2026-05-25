@@ -23,6 +23,8 @@ PixelRevPosition = Literal["top", "bottom"]
 PixelColorTheme = Literal["simdt_blue", "warm_amber", "race_gyr", "custom"]
 PixelRevScale = Literal["wide", "alert_window"]
 PixelShiftMode = Literal["rev_limit", "percent"]
+PixelGearLayout = Literal["current", "current_suggested"]
+PixelSizeSource = Literal["auto", "config"]
 
 
 DEFAULT_VERBOSITY: dict[AlertCategory, Verbosity] = {
@@ -119,6 +121,10 @@ class PixelDisplayConfig:
     brightness: int = 60
     dim_brightness: int = 12
     orientation: int = 0
+    width: int = 64
+    height: int = 64
+    size_source: PixelSizeSource = "auto"
+    gear_layout: PixelGearLayout = "current"
     rev_scale: PixelRevScale = "wide"
     rev_start_percent: float = 0.60
     shift_mode: PixelShiftMode = "rev_limit"
@@ -224,6 +230,18 @@ class AppConfig:
                 orientation=_int_range(
                     os.getenv("GT7ENG_PIXEL_DISPLAY_ORIENTATION"), 0, 0, 3
                 ),
+                width=_int_range(
+                    os.getenv("GT7ENG_PIXEL_DISPLAY_WIDTH"), 64, 8, 512
+                ),
+                height=_int_range(
+                    os.getenv("GT7ENG_PIXEL_DISPLAY_HEIGHT"), 64, 8, 512
+                ),
+                size_source=_size_source(
+                    os.getenv("GT7ENG_PIXEL_DISPLAY_SIZE_SOURCE", "auto")
+                ),
+                gear_layout=_gear_layout(
+                    os.getenv("GT7ENG_PIXEL_DISPLAY_GEAR_LAYOUT", "current")
+                ),
                 rev_scale=_rev_scale(
                     os.getenv("GT7ENG_PIXEL_DISPLAY_REV_SCALE", "wide")
                 ),
@@ -291,6 +309,20 @@ def _color_theme(value: str) -> PixelColorTheme:
     if normalized in {"warm_amber", "race_gyr", "custom"}:
         return normalized  # type: ignore[return-value]
     return "simdt_blue"
+
+
+def _gear_layout(value: str) -> PixelGearLayout:
+    normalized = value.strip().lower()
+    if normalized == "current_suggested":
+        return "current_suggested"
+    return "current"
+
+
+def _size_source(value: str) -> PixelSizeSource:
+    normalized = value.strip().lower()
+    if normalized == "config":
+        return "config"
+    return "auto"
 
 
 def _rev_scale(value: str) -> PixelRevScale:

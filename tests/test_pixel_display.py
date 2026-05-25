@@ -33,6 +33,30 @@ def non_black_pixels(frame) -> int:
     )
 
 
+def non_black_pixels_in_gear_area(frame, *, x_min: int = 0, x_max: int | None = None) -> int:
+    x_max = frame.width if x_max is None else x_max
+    bar_height = max(1, frame.height // 10)
+    y_max = frame.height - bar_height - 2
+    return sum(
+        1
+        for y in range(0, y_max)
+        for x in range(x_min, x_max)
+        if frame.pixel(x, y) != (0, 0, 0)
+    )
+
+
+def first_non_black_x_in_gear_area(frame) -> int | None:
+    bar_height = max(1, frame.height // 10)
+    y_max = frame.height - bar_height - 2
+    xs = [
+        x
+        for y in range(0, y_max)
+        for x in range(frame.width)
+        if frame.pixel(x, y) != (0, 0, 0)
+    ]
+    return min(xs) if xs else None
+
+
 def test_renderer_draws_bottom_rev_bar_by_default():
     renderer = PixelDisplayRenderer(PixelDisplayConfig())
 
@@ -67,6 +91,54 @@ def test_renderer_uses_warm_amber_theme():
         for y in range(frame.height)
         for x in range(frame.width)
     )
+
+
+def test_renderer_current_layout_ignores_suggested_gear():
+    renderer = PixelDisplayRenderer(PixelDisplayConfig(gear_layout="current"))
+
+    current = renderer.render_snapshot(racing_snapshot(current_gear=4))
+    suggested = renderer.render_snapshot(
+        racing_snapshot(current_gear=4, suggested_gear=3)
+    )
+
+    assert suggested.pixels == current.pixels
+
+
+def test_renderer_current_suggested_layout_draws_larger_right_gear():
+    renderer = PixelDisplayRenderer(PixelDisplayConfig(gear_layout="current_suggested"))
+
+    current = renderer.render_snapshot(racing_snapshot(current_gear=4))
+    suggested = renderer.render_snapshot(
+        racing_snapshot(current_gear=4, suggested_gear=3)
+    )
+
+    assert first_non_black_x_in_gear_area(suggested) == first_non_black_x_in_gear_area(current)
+    assert non_black_pixels_in_gear_area(current, x_min=44) == 0
+    assert non_black_pixels_in_gear_area(suggested, x_min=44) > 0
+
+
+def test_renderer_current_suggested_layout_keeps_suggested_visible_on_32px_display():
+    renderer = PixelDisplayRenderer(
+        PixelDisplayConfig(gear_layout="current_suggested"),
+        width=32,
+        height=32,
+    )
+
+    frame = renderer.render_snapshot(racing_snapshot(current_gear=4, suggested_gear=3))
+
+    assert non_black_pixels_in_gear_area(frame, x_min=21) >= 40
+
+
+@pytest.mark.parametrize("suggested_gear", [None, 0, 4, 10])
+def test_renderer_hides_invalid_suggested_gear_values(suggested_gear):
+    renderer = PixelDisplayRenderer(PixelDisplayConfig(gear_layout="current_suggested"))
+
+    current = renderer.render_snapshot(racing_snapshot(current_gear=4))
+    suggested = renderer.render_snapshot(
+        racing_snapshot(current_gear=4, suggested_gear=suggested_gear)
+    )
+
+    assert suggested.pixels == current.pixels
 
 
 def test_renderer_supports_custom_theme_overrides():
@@ -161,6 +233,18 @@ def test_renderer_shift_flash_toggles_gear_pixels():
     assert non_black_pixels(on_frame) > non_black_pixels(off_frame)
 
 
+def test_renderer_shift_flash_toggles_suggested_gear_with_current_gear():
+    config = PixelDisplayConfig(gear_layout="current_suggested", flash_hz=8.0)
+    renderer = PixelDisplayRenderer(config)
+    snapshot = racing_snapshot(current_gear=4, suggested_gear=3, rev_limit=True)
+
+    on_frame = renderer.render_snapshot(snapshot, now=0.0)
+    off_frame = renderer.render_snapshot(snapshot, now=0.1)
+
+    assert non_black_pixels_in_gear_area(on_frame) > 0
+    assert non_black_pixels_in_gear_area(off_frame) == 0
+
+
 def test_pixel_preview_writes_png(tmp_path):
     output = tmp_path / "preview.png"
 
@@ -168,6 +252,7 @@ def test_pixel_preview_writes_png(tmp_path):
         AppConfig(),
         output,
         gear=4,
+        suggested_gear=3,
         rpm_percent=0.8,
         shift=False,
         idle=False,
@@ -182,12 +267,14 @@ def test_pixel_preview_writes_png(tmp_path):
 
 
 class FakePixelClient:
-    def __init__(self):
+    def __init__(self, *, width: int = 64, height: int = 64):
         self.connect_calls = 0
         self.disconnect_calls = 0
         self.brightness: list[int] = []
         self.orientation: list[int] = []
         self.sent: list[str | bytes] = []
+        self.info = SimpleNamespace(width=width, height=height)
+        self._session = SimpleNamespace(_device_info=self.info)
 
     async def connect(self) -> None:
         self.connect_calls += 1
@@ -196,7 +283,7 @@ class FakePixelClient:
         self.disconnect_calls += 1
 
     def get_device_info(self):
-        return SimpleNamespace(width=64, height=64)
+        return self.info
 
     async def set_brightness(self, level: int) -> None:
         self.brightness.append(level)
@@ -239,6 +326,66 @@ async def test_manager_keeps_one_connection_and_sends_deduped_frames():
     assert fake.disconnect_calls == 1
     assert len(fake.sent) >= 2
     assert manager.status()["frames_sent"] == 1
+
+
+@pytest.mark.asyncio
+async def test_manager_auto_size_uses_reported_device_size():
+    config = PixelDisplayConfig(enabled=True, address="device-uuid", width=64, height=64)
+    snapshot = racing_snapshot()
+    fake = FakePixelClient(width=32, height=32)
+    manager = PixelDisplayManager(
+        config,
+        snapshot_provider=lambda: snapshot,
+        client_factory=lambda _address: fake,
+    )
+
+    await manager.start()
+    manager.publish(snapshot)
+    await asyncio_sleep()
+    status = manager.status()
+    await manager.stop()
+
+    assert manager.renderer.width == 32
+    assert manager.renderer.height == 32
+    assert status["device_width"] == 32
+    assert status["device_height"] == 32
+    assert status["reported_device_width"] == 32
+    assert status["reported_device_height"] == 32
+    assert fake.info.width == 32
+    assert fake.info.height == 32
+
+
+@pytest.mark.asyncio
+async def test_manager_config_size_can_override_reported_device_size():
+    config = PixelDisplayConfig(
+        enabled=True,
+        address="device-uuid",
+        width=64,
+        height=64,
+        size_source="config",
+    )
+    snapshot = racing_snapshot()
+    fake = FakePixelClient(width=32, height=32)
+    manager = PixelDisplayManager(
+        config,
+        snapshot_provider=lambda: snapshot,
+        client_factory=lambda _address: fake,
+    )
+
+    await manager.start()
+    manager.publish(snapshot)
+    await asyncio_sleep()
+    status = manager.status()
+    await manager.stop()
+
+    assert manager.renderer.width == 64
+    assert manager.renderer.height == 64
+    assert status["device_width"] == 64
+    assert status["device_height"] == 64
+    assert status["reported_device_width"] == 32
+    assert status["reported_device_height"] == 32
+    assert fake.info.width == 64
+    assert fake.info.height == 64
 
 
 async def asyncio_sleep() -> None:

@@ -189,6 +189,7 @@ class RaceState:
             min_alert_rpm=frame.min_alert_rpm,
             max_alert_rpm=frame.max_alert_rpm,
             current_gear=frame.current_gear,
+            suggested_gear=frame.suggested_gear,
             tire_temps=frame.tire_temps,
             tire_radius=frame.tire_radius,
             tire_wear_percent=tire_wear,

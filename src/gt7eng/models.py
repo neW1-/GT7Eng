@@ -260,6 +260,7 @@ class RaceSnapshot:
     min_alert_rpm: float | None = None
     max_alert_rpm: float | None = None
     current_gear: int | None = None
+    suggested_gear: int | None = None
     tire_temps: WheelValues = field(default_factory=WheelValues)
     tire_radius: WheelValues = field(default_factory=WheelValues)
     tire_wear_percent: WheelValues = field(default_factory=WheelValues)

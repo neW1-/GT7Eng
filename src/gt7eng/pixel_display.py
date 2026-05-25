@@ -126,12 +126,12 @@ class PixelDisplayRenderer:
         self,
         config: PixelDisplayConfig,
         *,
-        width: int = 64,
-        height: int = 64,
+        width: int | None = None,
+        height: int | None = None,
     ):
         self.config = config
-        self.width = max(8, int(width))
-        self.height = max(8, int(height))
+        self.width = max(8, int(width or config.width))
+        self.height = max(8, int(height or config.height))
         self.palette = palette_from_config(config)
 
     def render_snapshot(self, snapshot: RaceSnapshot, *, now: float | None = None) -> PixelFrame:
@@ -149,9 +149,8 @@ class PixelDisplayRenderer:
         if shift_active:
             flash_on = int(timestamp * self.config.flash_hz * 2) % 2 == 0
         gear_color = self.palette.shift if shift_active else self.palette.gear
-        label = _gear_label(snapshot.current_gear)
         if flash_on:
-            self._draw_label(pixels, label, gear_color)
+            self._draw_gears(pixels, snapshot, gear_color)
         return PixelFrame(self.width, self.height, bytes(pixels))
 
     def render_black(self) -> PixelFrame:
@@ -190,6 +189,7 @@ class PixelDisplayRenderer:
             "source": state.source,
             "scale": self.config.rev_scale,
             "shift_mode": self.config.shift_mode,
+            "gear_layout": self.config.gear_layout,
             "shift_active": self.shift_active(snapshot, state.percent),
         }
 
@@ -234,18 +234,70 @@ class PixelDisplayRenderer:
                 _set_pixel(pixels, self.width, x, y, color)
 
     def _draw_label(self, pixels: bytearray, label: str, color: Color) -> None:
+        self._draw_label_in_area(pixels, label, color, 3, self.width - 3)
+
+    def _draw_gears(
+        self,
+        pixels: bytearray,
+        snapshot: RaceSnapshot,
+        gear_color: Color,
+    ) -> None:
+        current_label = _gear_label(snapshot.current_gear)
+        suggested_label = _suggested_gear_label(
+            snapshot.current_gear,
+            snapshot.suggested_gear,
+        )
+        if self.config.gear_layout != "current_suggested":
+            self._draw_label(pixels, current_label, gear_color)
+            return
+
+        split = max(1, int(self.width * 0.65))
+        main_scale = self._draw_label_in_area(
+            pixels,
+            current_label,
+            gear_color,
+            1,
+            split,
+        )
+        if suggested_label is None:
+            return
+        suggested_color = _scale_color(self.palette.gear, 0.45)
+        suggested_max_scale = max(1, min(main_scale - 1, round(main_scale * 0.75)))
+        self._draw_label_in_area(
+            pixels,
+            suggested_label,
+            suggested_color,
+            min(self.width - 1, split + 1),
+            self.width - 1,
+            max_scale=suggested_max_scale,
+        )
+
+    def _draw_label_in_area(
+        self,
+        pixels: bytearray,
+        label: str,
+        color: Color,
+        x_min: int,
+        x_max: int,
+        *,
+        max_scale: int | None = None,
+    ) -> int:
         pattern = _compose_label_pattern(label)
         pattern_height = len(pattern)
         pattern_width = len(pattern[0])
         bar_height = max(1, self.height // 10)
         y_min = bar_height + 2 if self.config.rev_position == "top" else 2
         y_max = self.height - bar_height - 2 if self.config.rev_position == "bottom" else self.height - 2
-        available_width = max(1, self.width - 6)
+        x_min = max(0, min(self.width - 1, x_min))
+        x_max = max(x_min + 1, min(self.width, x_max))
+        available_width = max(1, x_max - x_min)
         available_height = max(1, y_max - y_min)
         scale = max(1, min(available_width // pattern_width, available_height // pattern_height))
+        if max_scale is not None:
+            scale = max(1, min(scale, max_scale))
         draw_width = pattern_width * scale
         draw_height = pattern_height * scale
-        x_start = max(0, (self.width - draw_width) // 2)
+        x_start = x_min + max(0, (available_width - draw_width) // 2)
         y_start = max(y_min, y_min + (available_height - draw_height) // 2)
         for row_index, row in enumerate(pattern):
             for col_index, value in enumerate(row):
@@ -256,6 +308,7 @@ class PixelDisplayRenderer:
                 for y in range(y0, min(y0 + scale, self.height)):
                     for x in range(x0, min(x0 + scale, self.width)):
                         _set_pixel(pixels, self.width, x, y, color)
+        return scale
 
     def _dim_scale(self) -> float:
         if self.config.brightness <= 0:
@@ -291,6 +344,8 @@ class PixelDisplayManager:
         self._frames_sent = 0
         self._device_width: int | None = None
         self._device_height: int | None = None
+        self._reported_device_width: int | None = None
+        self._reported_device_height: int | None = None
 
     async def start(self) -> None:
         if not self.config.enabled or self._task is not None:
@@ -331,8 +386,11 @@ class PixelDisplayManager:
             "address": _redact_address(self.config.address),
             "device_width": self._device_width,
             "device_height": self._device_height,
+            "reported_device_width": self._reported_device_width,
+            "reported_device_height": self._reported_device_height,
             "update_hz": self.config.update_hz,
             "rev_position": self.config.rev_position,
+            "gear_layout": self.config.gear_layout,
             "color_theme": self.config.color_theme,
             "brightness": self.config.brightness,
             "rev": self.renderer.rev_diagnostics(snapshot),
@@ -406,6 +464,7 @@ class PixelDisplayManager:
         self._backoff_seconds = 1.0
         self._next_connect_at = 0.0
         self._update_device_info(client)
+        self._sync_client_render_size(client)
         return client
 
     def _update_device_info(self, client: PixelClient) -> None:
@@ -415,15 +474,41 @@ class PixelDisplayManager:
             return
         width = getattr(info, "width", None)
         height = getattr(info, "height", None)
-        if isinstance(width, int) and isinstance(height, int) and width > 0 and height > 0:
-            self._device_width = width
-            self._device_height = height
-            if width != self.renderer.width or height != self.renderer.height:
-                self.renderer = PixelDisplayRenderer(
-                    self.config,
-                    width=width,
-                    height=height,
-                )
+        if isinstance(width, int) and width > 0:
+            self._reported_device_width = width
+        if isinstance(height, int) and height > 0:
+            self._reported_device_height = height
+        render_width, render_height = self._render_dimensions()
+        self._device_width = render_width
+        self._device_height = render_height
+        if self.renderer.width != render_width or self.renderer.height != render_height:
+            self.renderer = PixelDisplayRenderer(
+                self.config,
+                width=render_width,
+                height=render_height,
+            )
+
+    def _render_dimensions(self) -> tuple[int, int]:
+        if (
+            self.config.size_source == "auto"
+            and self._reported_device_width is not None
+            and self._reported_device_height is not None
+        ):
+            return self._reported_device_width, self._reported_device_height
+        return self.config.width, self.config.height
+
+    def _sync_client_render_size(self, client: PixelClient) -> None:
+        if self.config.size_source != "config":
+            return
+        session = getattr(client, "_session", None)
+        info = getattr(session, "_device_info", None)
+        if info is None:
+            return
+        try:
+            info.width = self.config.width
+            info.height = self.config.height
+        except Exception:
+            logger.debug("Pixel display device info dimensions could not be overridden.")
 
     async def _send_shutdown_frame(self) -> None:
         if self._client is None or not self._connected:
@@ -517,6 +602,16 @@ def _gear_label(gear: int | None) -> str:
     if 1 <= gear <= 9:
         return str(gear)
     return str(gear)[:2]
+
+
+def _suggested_gear_label(current_gear: int | None, suggested_gear: int | None) -> str | None:
+    if suggested_gear is None:
+        return None
+    if suggested_gear <= 0 or suggested_gear > 9:
+        return None
+    if suggested_gear == current_gear:
+        return None
+    return str(suggested_gear)
 
 
 def _compose_label_pattern(label: str) -> list[str]:

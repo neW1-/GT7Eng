@@ -83,7 +83,9 @@ function render(data) {
   fields.sttStatus.textContent = data.audio?.stt?.enabled ? "stt on" : "stt off";
   fields.ttsStatus.textContent = data.audio?.tts?.engine || data.config?.tts?.engine || "tts";
   const pixel = data.pixel_display || {};
-  if (!pixel.enabled) {
+  const pixelConfig = data.config?.pixel_display || {};
+  const pixelEnabled = Boolean(pixel.enabled || pixelConfig.enabled);
+  if (!pixelEnabled) {
     fields.pixelStatus.textContent = "pixel off";
   } else if (pixel.connected) {
     const size = pixel.device_width && pixel.device_height

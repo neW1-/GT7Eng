@@ -47,6 +47,7 @@ def main(argv: list[str] | None = None) -> int:
     )
     preview_parser.add_argument("output", type=Path)
     preview_parser.add_argument("--gear", type=int, default=3)
+    preview_parser.add_argument("--suggested-gear", type=int)
     preview_parser.add_argument("--rpm-percent", type=float, default=0.85)
     preview_parser.add_argument("--rpm", type=float)
     preview_parser.add_argument("--min-alert-rpm", type=float)
@@ -85,6 +86,7 @@ def main(argv: list[str] | None = None) -> int:
             config,
             args.output,
             gear=args.gear,
+            suggested_gear=args.suggested_gear,
             rpm_percent=args.rpm_percent,
             rpm=args.rpm,
             min_alert_rpm=args.min_alert_rpm,
@@ -200,7 +202,8 @@ def _doctor_pixel_display(config: AppConfig) -> bool:
     if not pixel.enabled:
         print(
             f"pixel      disabled package={'ok' if package_ok else 'missing'} "
-            f"theme={pixel.color_theme} scale={pixel.rev_scale} shift={pixel.shift_mode}"
+            f"theme={pixel.color_theme} layout={pixel.gear_layout} "
+            f"scale={pixel.rev_scale} shift={pixel.shift_mode}"
         )
         return True
     if not pixel.address:
@@ -221,8 +224,9 @@ def _doctor_pixel_display(config: AppConfig) -> bool:
         print(f"pixel      connection failed: {exc}")
         return False
     print(
-        f"pixel      connected {getattr(info, 'width', '?')}x{getattr(info, 'height', '?')} "
-        f"theme={pixel.color_theme} rev={pixel.rev_position} "
+        f"pixel      connected render={pixel.width}x{pixel.height} "
+        f"reported={getattr(info, 'width', '?')}x{getattr(info, 'height', '?')} "
+        f"theme={pixel.color_theme} layout={pixel.gear_layout} rev={pixel.rev_position} "
         f"scale={pixel.rev_scale} shift={pixel.shift_mode}"
     )
     return True
@@ -245,6 +249,7 @@ def _pixel_preview(
     *,
     gear: int,
     rpm_percent: float,
+    suggested_gear: int | None = None,
     rpm: float | None = None,
     min_alert_rpm: float | None = None,
     max_alert_rpm: float | None = None,
@@ -282,6 +287,7 @@ def _pixel_preview(
             min_alert_rpm=min_alert_rpm if min_alert_rpm is not None else start_rpm,
             max_alert_rpm=full_rpm,
             current_gear=gear,
+            suggested_gear=suggested_gear,
             rev_limit=shift or rev_limit,
         )
     frame = renderer.render_snapshot(snapshot)

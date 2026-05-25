@@ -199,6 +199,8 @@ The live voice path now supports short-turn conversational memory. Deterministic
 - [x] Configure the local `.env` to connect to `LED_BLE_F16C3591` using CoreBluetooth UUID `7D157B3A-F9F5-06B7-DEC5-A962DAAB7E72`.
 - [x] Keep a persistent `pypixelcolor.AsyncClient` BLE connection open while GT7Eng is running.
 - [x] Render a large gear indicator with configurable top/bottom rev bar, defaulting to bottom.
+- [x] Use BLE-reported render dimensions by default, with configurable width/height fallback or explicit override for unusual panels.
+- [x] Add configurable pixel gear layouts for current gear only or current gear with GT7's suggested gear.
 - [x] Support `simdt_blue`, `warm_amber`, `race_gyr`, and `custom` color themes so night stints can use amber/orange/red instead of blue.
 - [x] Normalize GT7 `min_alert_rpm` and `max_alert_rpm` into telemetry snapshots and use `max_alert_rpm` for the default wide rev-bar sweep before falling back to configured RPM values.
 - [x] Flash the gear at shift point when GT7 reports `rev_limit` by default, with optional percent-trigger mode still configurable.

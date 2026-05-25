@@ -793,9 +793,11 @@ def test_snapshot_includes_gt_alert_rpm_range():
             engine_rpm=7350.0,
             min_alert_rpm=6200.0,
             max_alert_rpm=8100.0,
+            suggested_gear=3,
         )
     )
 
     assert service.snapshot.engine_rpm == 7350.0
     assert service.snapshot.min_alert_rpm == 6200.0
     assert service.snapshot.max_alert_rpm == 8100.0
+    assert service.snapshot.suggested_gear == 3

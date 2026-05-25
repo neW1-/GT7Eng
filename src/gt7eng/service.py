@@ -374,6 +374,10 @@ class RaceEngineerService:
                 "pixel_display": {
                     "enabled": self.config.pixel_display.enabled,
                     "rev_position": self.config.pixel_display.rev_position,
+                    "gear_layout": self.config.pixel_display.gear_layout,
+                    "width": self.config.pixel_display.width,
+                    "height": self.config.pixel_display.height,
+                    "size_source": self.config.pixel_display.size_source,
                     "rev_scale": self.config.pixel_display.rev_scale,
                     "rev_start_percent": self.config.pixel_display.rev_start_percent,
                     "shift_mode": self.config.pixel_display.shift_mode,
