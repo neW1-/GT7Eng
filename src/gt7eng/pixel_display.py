@@ -87,6 +87,14 @@ class PixelPalette:
     shift: Color
 
 
+@dataclass(slots=True)
+class RevBarState:
+    percent: float
+    start_rpm: float | None
+    full_rpm: float | None
+    source: str
+
+
 class PixelClient(Protocol):
     async def connect(self) -> None:
         ...
@@ -133,10 +141,10 @@ class PixelDisplayRenderer:
             self._draw_idle(pixels)
             return PixelFrame(self.width, self.height, bytes(pixels))
 
-        rev_percent = self.rev_percent(snapshot)
-        self._draw_rev_bar(pixels, rev_percent)
+        rev_state = self.rev_state(snapshot)
+        self._draw_rev_bar(pixels, rev_state.percent)
 
-        shift_active = bool(snapshot.rev_limit) or rev_percent >= self.config.shift_percent
+        shift_active = self.shift_active(snapshot, rev_state.percent)
         flash_on = True
         if shift_active:
             flash_on = int(timestamp * self.config.flash_hz * 2) % 2 == 0
@@ -150,18 +158,61 @@ class PixelDisplayRenderer:
         return PixelFrame(self.width, self.height, bytes(self.width * self.height * 3))
 
     def rev_percent(self, snapshot: RaceSnapshot) -> float:
+        return self.rev_state(snapshot).percent
+
+    def rev_state(self, snapshot: RaceSnapshot) -> RevBarState:
         rpm = snapshot.engine_rpm
+        start_rpm, full_rpm, source = self._rev_range(snapshot)
         if rpm is None:
-            return 1.0 if snapshot.rev_limit else 0.0
+            percent = 1.0 if snapshot.rev_limit else 0.0
+            return RevBarState(percent, start_rpm, full_rpm, source)
+        if start_rpm is None or full_rpm is None or full_rpm <= start_rpm:
+            percent = 1.0 if snapshot.rev_limit else 0.0
+            return RevBarState(percent, start_rpm, full_rpm, source)
+        percent = _clamp((rpm - start_rpm) / (full_rpm - start_rpm), 0.0, 1.0)
+        return RevBarState(percent, start_rpm, full_rpm, source)
+
+    def shift_active(self, snapshot: RaceSnapshot, rev_percent: float | None = None) -> bool:
+        if snapshot.rev_limit:
+            return True
+        if self.config.shift_mode == "percent":
+            percent = self.rev_percent(snapshot) if rev_percent is None else rev_percent
+            return percent >= self.config.shift_percent
+        return False
+
+    def rev_diagnostics(self, snapshot: RaceSnapshot) -> dict:
+        state = self.rev_state(snapshot)
+        return {
+            "engine_rpm": snapshot.engine_rpm,
+            "start_rpm": state.start_rpm,
+            "full_rpm": state.full_rpm,
+            "percent": state.percent,
+            "source": state.source,
+            "scale": self.config.rev_scale,
+            "shift_mode": self.config.shift_mode,
+            "shift_active": self.shift_active(snapshot, state.percent),
+        }
+
+    def _rev_range(self, snapshot: RaceSnapshot) -> tuple[float | None, float | None, str]:
+        if self.config.rev_scale == "wide":
+            alert_max = _positive(snapshot.max_alert_rpm)
+            if alert_max is not None:
+                return alert_max * self.config.rev_start_percent, alert_max, "gt_alert_max"
+            rpm_min = _positive(self.config.rpm_min)
+            rpm_max = _positive(self.config.rpm_max)
+            if rpm_min is not None and rpm_max is not None and rpm_max > rpm_min:
+                return rpm_min, rpm_max, "config"
+            return None, None, "none"
 
         rpm_min = _positive(snapshot.min_alert_rpm)
         rpm_max = _positive(snapshot.max_alert_rpm)
-        if rpm_min is None or rpm_max is None or rpm_max <= rpm_min:
-            rpm_min = _positive(self.config.rpm_min)
-            rpm_max = _positive(self.config.rpm_max)
-        if rpm_min is None or rpm_max is None or rpm_max <= rpm_min:
-            return 1.0 if snapshot.rev_limit else 0.0
-        return _clamp((rpm - rpm_min) / (rpm_max - rpm_min), 0.0, 1.0)
+        if rpm_min is not None and rpm_max is not None and rpm_max > rpm_min:
+            return rpm_min, rpm_max, "gt_alert_window"
+        rpm_min = _positive(self.config.rpm_min)
+        rpm_max = _positive(self.config.rpm_max)
+        if rpm_min is not None and rpm_max is not None and rpm_max > rpm_min:
+            return rpm_min, rpm_max, "config"
+        return None, None, "none"
 
     def _draw_idle(self, pixels: bytearray) -> None:
         color = _scale_color(self.palette.rev_mid, self._dim_scale())
@@ -176,7 +227,7 @@ class PixelDisplayRenderer:
                 position = (x + 1) / self.width
                 if position >= 0.9:
                     color = self.palette.rev_high
-                elif position >= 0.72:
+                elif position >= 0.7:
                     color = self.palette.rev_mid
                 else:
                     color = self.palette.rev_low
@@ -272,6 +323,7 @@ class PixelDisplayManager:
             self._loop.call_soon_threadsafe(self._wake_event.set)
 
     def status(self) -> dict:
+        snapshot = self._current_snapshot()
         return {
             "enabled": self.config.enabled,
             "configured": bool(self.config.address),
@@ -283,6 +335,7 @@ class PixelDisplayManager:
             "rev_position": self.config.rev_position,
             "color_theme": self.config.color_theme,
             "brightness": self.config.brightness,
+            "rev": self.renderer.rev_diagnostics(snapshot),
             "last_error": self._last_error,
             "last_sent_at": self._last_sent_at,
             "frames_sent": self._frames_sent,

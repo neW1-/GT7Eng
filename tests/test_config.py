@@ -12,6 +12,9 @@ PIXEL_ENV_KEYS = [
     "GT7ENG_PIXEL_DISPLAY_BRIGHTNESS",
     "GT7ENG_PIXEL_DISPLAY_DIM_BRIGHTNESS",
     "GT7ENG_PIXEL_DISPLAY_ORIENTATION",
+    "GT7ENG_PIXEL_DISPLAY_REV_SCALE",
+    "GT7ENG_PIXEL_DISPLAY_REV_START_PERCENT",
+    "GT7ENG_PIXEL_DISPLAY_SHIFT_MODE",
     "GT7ENG_PIXEL_DISPLAY_SHIFT_PERCENT",
     "GT7ENG_PIXEL_DISPLAY_FLASH_HZ",
     "GT7ENG_PIXEL_DISPLAY_COLOR_THEME",
@@ -90,6 +93,9 @@ def test_pixel_display_env_defaults(monkeypatch):
     assert config.pixel_display.address == ""
     assert config.pixel_display.update_hz == 10.0
     assert config.pixel_display.rev_position == "bottom"
+    assert config.pixel_display.rev_scale == "wide"
+    assert config.pixel_display.rev_start_percent == 0.60
+    assert config.pixel_display.shift_mode == "rev_limit"
     assert config.pixel_display.color_theme == "simdt_blue"
 
 
@@ -98,6 +104,9 @@ def test_pixel_display_env_accepts_theme_and_custom_colors(monkeypatch):
     monkeypatch.setenv("GT7ENG_PIXEL_DISPLAY_ADDRESS", "30:E1:AF:BD:5F:D0")
     monkeypatch.setenv("GT7ENG_PIXEL_DISPLAY_COLOR_THEME", "warm_amber")
     monkeypatch.setenv("GT7ENG_PIXEL_DISPLAY_REV_POSITION", "top")
+    monkeypatch.setenv("GT7ENG_PIXEL_DISPLAY_REV_SCALE", "alert_window")
+    monkeypatch.setenv("GT7ENG_PIXEL_DISPLAY_REV_START_PERCENT", "0.55")
+    monkeypatch.setenv("GT7ENG_PIXEL_DISPLAY_SHIFT_MODE", "percent")
     monkeypatch.setenv("GT7ENG_PIXEL_DISPLAY_GEAR_COLOR", "#ff8800")
     monkeypatch.setenv("GT7ENG_PIXEL_DISPLAY_REV_LOW_COLOR", "not-a-color")
     monkeypatch.setenv("GT7ENG_PIXEL_DISPLAY_RPM_MIN", "6000")
@@ -109,6 +118,9 @@ def test_pixel_display_env_accepts_theme_and_custom_colors(monkeypatch):
     assert config.pixel_display.address == "30:E1:AF:BD:5F:D0"
     assert config.pixel_display.color_theme == "warm_amber"
     assert config.pixel_display.rev_position == "top"
+    assert config.pixel_display.rev_scale == "alert_window"
+    assert config.pixel_display.rev_start_percent == 0.55
+    assert config.pixel_display.shift_mode == "percent"
     assert config.pixel_display.gear_color == "ff8800"
     assert config.pixel_display.rev_low_color == ""
     assert config.pixel_display.rpm_min == 6000
@@ -119,6 +131,9 @@ def test_pixel_display_invalid_env_falls_back(monkeypatch):
     monkeypatch.setenv("GT7ENG_PIXEL_DISPLAY_UPDATE_HZ", "999")
     monkeypatch.setenv("GT7ENG_PIXEL_DISPLAY_ORIENTATION", "8")
     monkeypatch.setenv("GT7ENG_PIXEL_DISPLAY_SHIFT_PERCENT", "2")
+    monkeypatch.setenv("GT7ENG_PIXEL_DISPLAY_REV_SCALE", "narrow")
+    monkeypatch.setenv("GT7ENG_PIXEL_DISPLAY_REV_START_PERCENT", "1")
+    monkeypatch.setenv("GT7ENG_PIXEL_DISPLAY_SHIFT_MODE", "suggested")
     monkeypatch.setenv("GT7ENG_PIXEL_DISPLAY_COLOR_THEME", "purple")
     monkeypatch.setenv("GT7ENG_PIXEL_DISPLAY_REV_POSITION", "side")
 
@@ -127,5 +142,8 @@ def test_pixel_display_invalid_env_falls_back(monkeypatch):
     assert config.pixel_display.update_hz == 10.0
     assert config.pixel_display.orientation == 0
     assert config.pixel_display.shift_percent == 0.96
+    assert config.pixel_display.rev_scale == "wide"
+    assert config.pixel_display.rev_start_percent == 0.60
+    assert config.pixel_display.shift_mode == "rev_limit"
     assert config.pixel_display.color_theme == "simdt_blue"
     assert config.pixel_display.rev_position == "bottom"

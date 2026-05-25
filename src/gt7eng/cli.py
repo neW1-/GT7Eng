@@ -48,7 +48,11 @@ def main(argv: list[str] | None = None) -> int:
     preview_parser.add_argument("output", type=Path)
     preview_parser.add_argument("--gear", type=int, default=3)
     preview_parser.add_argument("--rpm-percent", type=float, default=0.85)
+    preview_parser.add_argument("--rpm", type=float)
+    preview_parser.add_argument("--min-alert-rpm", type=float)
+    preview_parser.add_argument("--max-alert-rpm", type=float)
     preview_parser.add_argument("--shift", action="store_true")
+    preview_parser.add_argument("--rev-limit", action="store_true")
     preview_parser.add_argument("--idle", action="store_true")
     preview_parser.add_argument("--width", type=int, default=64)
     preview_parser.add_argument("--height", type=int, default=64)
@@ -82,7 +86,11 @@ def main(argv: list[str] | None = None) -> int:
             args.output,
             gear=args.gear,
             rpm_percent=args.rpm_percent,
+            rpm=args.rpm,
+            min_alert_rpm=args.min_alert_rpm,
+            max_alert_rpm=args.max_alert_rpm,
             shift=args.shift,
+            rev_limit=args.rev_limit,
             idle=args.idle,
             width=args.width,
             height=args.height,
@@ -192,7 +200,7 @@ def _doctor_pixel_display(config: AppConfig) -> bool:
     if not pixel.enabled:
         print(
             f"pixel      disabled package={'ok' if package_ok else 'missing'} "
-            f"theme={pixel.color_theme}"
+            f"theme={pixel.color_theme} scale={pixel.rev_scale} shift={pixel.shift_mode}"
         )
         return True
     if not pixel.address:
@@ -214,7 +222,8 @@ def _doctor_pixel_display(config: AppConfig) -> bool:
         return False
     print(
         f"pixel      connected {getattr(info, 'width', '?')}x{getattr(info, 'height', '?')} "
-        f"theme={pixel.color_theme} rev={pixel.rev_position}"
+        f"theme={pixel.color_theme} rev={pixel.rev_position} "
+        f"scale={pixel.rev_scale} shift={pixel.shift_mode}"
     )
     return True
 
@@ -236,12 +245,16 @@ def _pixel_preview(
     *,
     gear: int,
     rpm_percent: float,
-    shift: bool,
-    idle: bool,
-    width: int,
-    height: int,
-    theme: str | None,
-    rev_position: str | None,
+    rpm: float | None = None,
+    min_alert_rpm: float | None = None,
+    max_alert_rpm: float | None = None,
+    shift: bool = False,
+    rev_limit: bool = False,
+    idle: bool = False,
+    width: int = 64,
+    height: int = 64,
+    theme: str | None = None,
+    rev_position: str | None = None,
 ) -> int:
     if theme is not None:
         config.pixel_display.color_theme = theme  # type: ignore[assignment]
@@ -251,21 +264,42 @@ def _pixel_preview(
     if idle:
         snapshot = RaceSnapshot(connected=False, session_phase="stale")
     else:
-        rpm = max(0.0, min(1.0, rpm_percent)) * 100.0
+        full_rpm = max_alert_rpm if max_alert_rpm is not None else 100.0
+        start_rpm = _preview_start_rpm(
+            config.pixel_display.rev_scale,
+            config.pixel_display.rev_start_percent,
+            full_rpm,
+            min_alert_rpm,
+        )
+        engine_rpm = rpm
+        if engine_rpm is None:
+            percent = max(0.0, min(1.0, rpm_percent))
+            engine_rpm = start_rpm + percent * (full_rpm - start_rpm)
         snapshot = RaceSnapshot(
             connected=True,
             session_phase="racing",
-            engine_rpm=rpm,
-            min_alert_rpm=0.0,
-            max_alert_rpm=100.0,
+            engine_rpm=engine_rpm,
+            min_alert_rpm=min_alert_rpm if min_alert_rpm is not None else start_rpm,
+            max_alert_rpm=full_rpm,
             current_gear=gear,
-            rev_limit=shift,
+            rev_limit=shift or rev_limit,
         )
     frame = renderer.render_snapshot(snapshot)
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_bytes(frame.to_png())
     print(f"pixel preview written: {output}")
     return 0
+
+
+def _preview_start_rpm(
+    rev_scale: str,
+    rev_start_percent: float,
+    full_rpm: float,
+    min_alert_rpm: float | None,
+) -> float:
+    if rev_scale == "wide":
+        return full_rpm * rev_start_percent
+    return min_alert_rpm if min_alert_rpm is not None else 0.0
 
 
 if __name__ == "__main__":

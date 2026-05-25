@@ -116,7 +116,7 @@ You can also set the duration at runtime by voice or typed chat, for example: â€
 
 ## BLE Pixel Gear Indicator
 
-GT7Eng can optionally drive an iPixel Color-compatible BLE matrix through `pypixelcolor`. The service keeps one BLE connection open, renders a large gear indicator, and adds a configurable rev bar. GT7 telemetry `min_alert_rpm` and `max_alert_rpm` are used for the rev fill when available, with `.env` RPM fallback values for cars or telemetry samples that do not expose that range.
+GT7Eng can optionally drive an iPixel Color-compatible BLE matrix through `pypixelcolor`. The service keeps one BLE connection open, renders a large gear indicator, and adds a configurable rev bar. By default the rev bar uses a wide sweep that starts at 60% of GT7's `max_alert_rpm` and reaches the final LED at `max_alert_rpm`, with `.env` RPM fallback values for cars or telemetry samples that do not expose that range.
 
 Start by installing the optional extra and scanning for the display address:
 
@@ -131,6 +131,9 @@ Then enable it in `.env`:
 GT7ENG_PIXEL_DISPLAY_ENABLED=true
 GT7ENG_PIXEL_DISPLAY_ADDRESS=your-device-address-or-corebluetooth-uuid
 GT7ENG_PIXEL_DISPLAY_REV_POSITION=bottom
+GT7ENG_PIXEL_DISPLAY_REV_SCALE=wide
+GT7ENG_PIXEL_DISPLAY_REV_START_PERCENT=0.60
+GT7ENG_PIXEL_DISPLAY_SHIFT_MODE=rev_limit
 GT7ENG_PIXEL_DISPLAY_COLOR_THEME=simdt_blue
 ```
 
@@ -145,7 +148,7 @@ For exact colors, set `GT7ENG_PIXEL_DISPLAY_COLOR_THEME=custom` and provide any 
 Preview the renderer without hardware:
 
 ```bash
-gt7eng pixel-preview /private/tmp/gt7eng-pixel-preview.png --theme warm_amber
+gt7eng pixel-preview /private/tmp/gt7eng-pixel-preview.png --theme warm_amber --rpm 7200 --max-alert-rpm 9000
 ```
 
 ## Replay

@@ -21,6 +21,8 @@ Verbosity = Literal["off", "critical", "balanced", "detailed"]
 VoiceMode = Literal["wake_phrase", "quiet_driver", "quiet_driver_ai"]
 PixelRevPosition = Literal["top", "bottom"]
 PixelColorTheme = Literal["simdt_blue", "warm_amber", "race_gyr", "custom"]
+PixelRevScale = Literal["wide", "alert_window"]
+PixelShiftMode = Literal["rev_limit", "percent"]
 
 
 DEFAULT_VERBOSITY: dict[AlertCategory, Verbosity] = {
@@ -117,6 +119,9 @@ class PixelDisplayConfig:
     brightness: int = 60
     dim_brightness: int = 12
     orientation: int = 0
+    rev_scale: PixelRevScale = "wide"
+    rev_start_percent: float = 0.60
+    shift_mode: PixelShiftMode = "rev_limit"
     shift_percent: float = 0.96
     flash_hz: float = 8.0
     color_theme: PixelColorTheme = "simdt_blue"
@@ -219,6 +224,18 @@ class AppConfig:
                 orientation=_int_range(
                     os.getenv("GT7ENG_PIXEL_DISPLAY_ORIENTATION"), 0, 0, 3
                 ),
+                rev_scale=_rev_scale(
+                    os.getenv("GT7ENG_PIXEL_DISPLAY_REV_SCALE", "wide")
+                ),
+                rev_start_percent=_float_range(
+                    os.getenv("GT7ENG_PIXEL_DISPLAY_REV_START_PERCENT"),
+                    0.60,
+                    0.0,
+                    0.95,
+                ),
+                shift_mode=_shift_mode(
+                    os.getenv("GT7ENG_PIXEL_DISPLAY_SHIFT_MODE", "rev_limit")
+                ),
                 shift_percent=_float_range(
                     os.getenv("GT7ENG_PIXEL_DISPLAY_SHIFT_PERCENT"), 0.96, 0.0, 1.0
                 ),
@@ -274,6 +291,20 @@ def _color_theme(value: str) -> PixelColorTheme:
     if normalized in {"warm_amber", "race_gyr", "custom"}:
         return normalized  # type: ignore[return-value]
     return "simdt_blue"
+
+
+def _rev_scale(value: str) -> PixelRevScale:
+    normalized = value.strip().lower()
+    if normalized == "alert_window":
+        return "alert_window"
+    return "wide"
+
+
+def _shift_mode(value: str) -> PixelShiftMode:
+    normalized = value.strip().lower()
+    if normalized == "percent":
+        return "percent"
+    return "rev_limit"
 
 
 def _bool(value: str | None, default: bool) -> bool:

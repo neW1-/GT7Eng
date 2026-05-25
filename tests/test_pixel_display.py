@@ -97,6 +97,50 @@ def test_renderer_uses_env_rpm_fallback_when_snapshot_lacks_alert_range():
     assert percent == 0.5
 
 
+def test_renderer_wide_scale_uses_max_alert_rpm_for_full_bar():
+    renderer = PixelDisplayRenderer(PixelDisplayConfig())
+
+    assert renderer.rev_percent(
+        racing_snapshot(engine_rpm=5400.0, max_alert_rpm=9000.0)
+    ) == 0.0
+    assert renderer.rev_percent(
+        racing_snapshot(engine_rpm=7200.0, max_alert_rpm=9000.0)
+    ) == pytest.approx(0.5)
+    assert renderer.rev_percent(
+        racing_snapshot(engine_rpm=9000.0, max_alert_rpm=9000.0)
+    ) == 1.0
+
+
+def test_renderer_full_bar_reaches_last_pixel_at_max_alert_rpm():
+    renderer = PixelDisplayRenderer(PixelDisplayConfig())
+
+    frame = renderer.render_snapshot(racing_snapshot(engine_rpm=9000.0, max_alert_rpm=9000.0))
+
+    assert frame.pixel(63, 63) != (0, 0, 0)
+
+
+def test_renderer_does_not_flash_before_rev_limit_by_default():
+    renderer = PixelDisplayRenderer(PixelDisplayConfig())
+    snapshot = racing_snapshot(engine_rpm=8856.0, max_alert_rpm=9000.0, rev_limit=False)
+
+    first_frame = renderer.render_snapshot(snapshot, now=0.0)
+    second_frame = renderer.render_snapshot(snapshot, now=0.1)
+
+    assert renderer.rev_percent(snapshot) == pytest.approx(0.96)
+    assert first_frame.pixels == second_frame.pixels
+
+
+def test_renderer_percent_shift_mode_can_flash_before_rev_limit():
+    config = PixelDisplayConfig(shift_mode="percent", shift_percent=0.96)
+    renderer = PixelDisplayRenderer(config)
+    snapshot = racing_snapshot(engine_rpm=8856.0, max_alert_rpm=9000.0, rev_limit=False)
+
+    on_frame = renderer.render_snapshot(snapshot, now=0.0)
+    off_frame = renderer.render_snapshot(snapshot, now=0.1)
+
+    assert non_black_pixels(on_frame) > non_black_pixels(off_frame)
+
+
 def test_renderer_idle_state_is_dim_unavailable_marker_without_rev_bar():
     renderer = PixelDisplayRenderer(PixelDisplayConfig())
 

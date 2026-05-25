@@ -200,8 +200,9 @@ The live voice path now supports short-turn conversational memory. Deterministic
 - [x] Keep a persistent `pypixelcolor.AsyncClient` BLE connection open while GT7Eng is running.
 - [x] Render a large gear indicator with configurable top/bottom rev bar, defaulting to bottom.
 - [x] Support `simdt_blue`, `warm_amber`, `race_gyr`, and `custom` color themes so night stints can use amber/orange/red instead of blue.
-- [x] Normalize GT7 `min_alert_rpm` and `max_alert_rpm` into telemetry snapshots and use them for rev-fill percentage before falling back to configured RPM values.
-- [x] Flash the gear at shift point when GT7 reports `rev_limit` or the configured shift percentage is reached.
+- [x] Normalize GT7 `min_alert_rpm` and `max_alert_rpm` into telemetry snapshots and use `max_alert_rpm` for the default wide rev-bar sweep before falling back to configured RPM values.
+- [x] Flash the gear at shift point when GT7 reports `rev_limit` by default, with optional percent-trigger mode still configurable.
+- [x] Add rev-bar tuning config for wide/alert-window scale, start percent, and shift trigger mode after rig feedback showed the alert-window bar was too compressed.
 - [x] Show dim `--` when telemetry is stale, idle, loading, paused, or not racing.
 - [x] Cap display sends at 10 Hz by default, dedupe identical frames, and use latest-snapshot rendering to avoid BLE backlog.
 - [x] Reconnect with capped backoff if BLE drops while keeping telemetry, HUD, and Discord running.
