@@ -50,8 +50,9 @@ Local Gran Turismo 7 race engineer for macOS. It auto-discovers the PS5 via `gt-
 - [x] Update fuel/pit strategy wording so negative finish margin does not always mean “box this lap.”
 - [x] Guard urgent fuel calls until the projection has enough clean lap samples, unless fuel is genuinely low.
 - [x] Keep HUD best-lap timing tied to completed lap history once laps are recorded.
-- [ ] Add full short-race/endurance validation, replay comparison, and alert tuning.
-- [ ] Validate spoken fuel, pit, lap, tire, and update commands during an active stint.
+- [x] Add full short-race/endurance live validation.
+- [ ] Add captured replay comparison and ongoing alert tuning.
+- [x] Validate spoken fuel, pit, lap, tire, and update commands during an active stint.
 - [ ] Tune Discord STT confidence, segment timing, and false-positive suppression from more headset samples.
 - [ ] Add local/LAN OpenAI-compatible LLM smoke tests and model setup docs.
 - [x] Add LLM intent repair for noisy Discord STT transcripts.
@@ -179,7 +180,7 @@ Current Discord status:
 - [x] Opus decode to PCM and stream into Python STT/VAD via `/api/discord/audio`.
 - [x] Transcribe spoken commands and route transcripts through the deterministic command parser.
 - [x] Pause receive streams while bot TTS is playing.
-- [ ] Verify bot ignores its own TTS during live voice use.
+- [x] Verify bot ignores its own TTS during live voice use.
 
 Discord setup status:
 
@@ -193,7 +194,7 @@ Discord setup status:
 - [x] Confirm proactive position alerts are spoken through Discord.
 - [x] Confirm driver speech increments `driver_audio_packets`.
 - [x] Confirm a spoken position question works hands-free.
-- [ ] Confirm spoken fuel/pit/lap questions work hands-free.
+- [x] Confirm spoken fuel/pit/lap questions work hands-free.
 
 Live validation notes from 2026-05-22:
 
@@ -219,6 +220,13 @@ Live validation notes from 2026-05-24:
 - Short-turn follow-up memory worked in initial live tests after deterministic answers.
 - Follow-ups like “which lap was that?” now resolve from structured memory instead of requiring the LLM to infer the prior answer.
 - Recent memory is sent to the local LLM for conversational follow-ups like “why?” after deterministic follow-up handling fails.
+
+Live validation notes from 2026-05-28:
+
+- Full short-race validation covered lap summaries, final-lap handling, and finish behavior acceptably for now.
+- Endurance-style stint validation covered fuel burn, pit advice, and fuel-margin calls acceptably for now.
+- Spoken Discord commands for fuel, pit, lap, tire, update, quiet, and more fuel updates worked acceptably for now.
+- Discord self-TTS suppression was confirmed in live voice use.
 
 ## Audio Configuration
 
@@ -355,13 +363,14 @@ npm start
 
 Then run `/join`, `/radio_check`, and `/status` in Discord. `/status` should show Python reachable. Keep `DISCORD_STT_ENABLED=false` until radio-check playback and proactive alerts are audible; then enable STT and confirm `driver_audio_packets` increases when the configured driver speaks.
 
-Next live tests:
+Remaining next work:
 
-- Complete a short race and verify lap-end spoken summaries, final-lap handling, and position changes.
-- Run an endurance-style stint long enough to validate fuel burn, pit advice, and fuel-margin calls.
-- Test spoken commands for fuel, pit, laps left, last lap, best lap, tires, and “give me an update.”
+- Capture/replay completed GT7 sessions for replay comparison and alert tuning.
 - Tune alert cooldowns and STT thresholds from real headset behavior.
 - Add HUD controls for preset/verbosity and voice mode so fewer settings require env edits.
+- Add Discord bridge status to the HUD.
+- Add local/LAN LLM smoke tests and model setup docs.
+- Add post-session debrief output and a macOS-friendly launcher after the live path stays stable.
 
 For PS5 headset use, join or transfer the Discord voice call to the PS5 and keep using the headset you already race with. The bot should sit in the same private voice channel. If you use Discord on the Mac instead, confirm the Mac microphone is receiving your voice.
 

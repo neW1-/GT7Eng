@@ -132,7 +132,7 @@ The live voice path now supports short-turn conversational memory. Deterministic
 - [x] Recent memory is included in free-form LLM payloads after deterministic follow-up resolution fails.
 - [x] LLM/STT/TTS calls run off the FastAPI event loop so slow local generation does not block telemetry ingestion.
 - [ ] Add live local/LAN LLM smoke tests and prompt regression coverage.
-- [ ] Validate spoken fuel, pit, lap, tire, and update commands during live driving.
+- [x] Validate spoken fuel, pit, lap, tire, and update commands during live driving.
 - [ ] Tune STT confidence and segmentation from more Discord headset samples.
 
 ## Discord Bot
@@ -150,7 +150,7 @@ The live voice path now supports short-turn conversational memory. Deterministic
 - Bot behavior:
   - [x] Filters/monitors to the configured driver user.
   - [x] Pauses receive streams while TTS is playing to avoid self-transcription.
-  - [ ] Verify bot ignores its own TTS output during live Discord use.
+  - [x] Verify bot ignores its own TTS output during live Discord use.
   - [x] Reconnects on voice disconnect.
   - [x] Logs recognized intent, confidence, and response text on the Python side.
   - [x] Does not store raw audio by default.
@@ -240,14 +240,13 @@ The live voice path now supports short-turn conversational memory. Deterministic
 - [x] 2026-05-23: Spoken telemetry connection alerts were throttled/silenced to stop stale/connected voice loops.
 - [x] 2026-05-24: Short-turn follow-up memory worked in initial live tests for recent deterministic answers.
 - [x] 2026-05-24: Follow-up context is now passed to the local LLM for conversational explanations after deterministic handling fails.
-- [ ] Full short-race validation with lap summaries, final lap, and finish behavior.
-- [ ] Endurance-style stint validation with fuel burn, pit advice, and fuel-margin calls.
-- [ ] Live validation of every supported spoken command.
+- [x] 2026-05-28: Full short-race validation covered lap summaries, final-lap handling, and finish behavior acceptably for now.
+- [x] 2026-05-28: Endurance-style stint validation covered fuel burn, pit advice, and fuel-margin calls acceptably for now.
+- [x] 2026-05-28: Spoken Discord commands for fuel, pit, lap, tire, update, quiet, and more fuel updates worked acceptably for now.
+- [x] 2026-05-28: Discord self-TTS suppression was confirmed in live voice use.
 
 ## Next Work Plan
-- [ ] Run a full short race and capture/replay it to tune lap, position, and finish alerts.
-- [ ] Run a longer fuel-burning stint and validate fuel-per-lap, finish margin, and pit-call timing against real GT7 behavior.
-- [ ] Test all spoken command intents over Discord: fuel, pit, laps left, last lap, best lap, tires, update, quiet, and more fuel updates.
+- [ ] Capture/replay completed GT7 sessions to compare live behavior and tune lap, position, fuel, pit, and finish alerts.
 - [ ] Add HUD controls for preset, category verbosity, voice mode, mute, and STT status.
 - [ ] Add Discord bridge status to the HUD, including connected channel, packet counter, last transcript, and last intent.
 - [ ] Add post-session debrief output summarizing laps, incidents, fuel trend, tire trend, and notable alerts.
@@ -266,7 +265,8 @@ The live voice path now supports short-turn conversational memory. Deterministic
 - [x] Short-turn memory: structured deterministic facts, 60-second expiry, deterministic follow-ups, and LLM context handoff.
 - [x] Integration hardening: reconnects, stale telemetry edge cases, bot errors, config validation, logging.
 - [x] Live GT7 smoke validation: PS5 discovery, stable packet rate, HUD/API on-track updates.
-- [ ] Live GT7 validation: full short race, endurance-style race, replay comparison, alert tuning.
+- [x] Live GT7 validation: full short race, endurance-style race, supported spoken commands, and self-TTS suppression.
+- [ ] Replay/tuning follow-up: captured GT7 replay comparison and alert tuning.
 
 ## Test Plan
 - Unit tests:
@@ -293,8 +293,8 @@ The live voice path now supports short-turn conversational memory. Deterministic
   - [x] PCM-to-WAV audio segment unit test.
   - [x] Live driver audio receive/STT smoke test in a real Discord channel.
   - [x] Live spoken position-command round trip through Discord.
-  - [ ] Live spoken fuel/pit/lap command round trips through Discord.
-  - [ ] Bot ignores its own speech.
+  - [x] Live spoken fuel/pit/lap command round trips through Discord.
+  - [x] Bot ignores its own speech.
 - LLM tests:
   - [x] Request-context payload includes current date/time for free-form questions.
   - [x] Conversation-context payload includes recent short-turn memory when available.
@@ -306,9 +306,9 @@ The live voice path now supports short-turn conversational memory. Deterministic
   - [x] Telemetry packet rate stable.
   - [x] HUD updates live from GT7.
   - [x] Discord bot speaks proactive position updates.
-  - [ ] Discord bot speaks proactive lap/fuel updates in a completed race stint.
+  - [x] Discord bot speaks proactive lap/fuel updates in a completed race stint.
   - [x] Driver can ask a position question hands-free.
-  - [ ] Driver can ask fuel/pit/lap questions hands-free.
+  - [x] Driver can ask fuel/pit/lap questions hands-free.
 
 ## Assumptions
 - Main race audio path is Discord voice.
