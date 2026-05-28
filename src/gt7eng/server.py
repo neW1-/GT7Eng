@@ -46,6 +46,7 @@ def create_app(
 
     @app.on_event("startup")
     async def startup() -> None:
+        await service.start_pixel_display()
         if telemetry_mode == "live":
             await service.start_source(GTTelemTelemetrySource(app_config))
         elif telemetry_mode == "replay" and replay_file:
@@ -54,6 +55,7 @@ def create_app(
     @app.on_event("shutdown")
     async def shutdown() -> None:
         await service.stop_source()
+        await service.stop_pixel_display()
         service.stop_capture()
 
     @app.get("/", response_class=HTMLResponse)

@@ -5,6 +5,7 @@ const fields = {
   muted: document.querySelector("#muted"),
   sttStatus: document.querySelector("#stt-status"),
   ttsStatus: document.querySelector("#tts-status"),
+  pixelStatus: document.querySelector("#pixel-status"),
   position: document.querySelector("#position"),
   lap: document.querySelector("#lap"),
   raceDuration: document.querySelector("#race-duration"),
@@ -20,6 +21,7 @@ const fields = {
   speed: document.querySelector("#speed"),
   rpm: document.querySelector("#rpm"),
   gear: document.querySelector("#gear"),
+  suggestedGear: document.querySelector("#suggested-gear"),
   tireHot: document.querySelector("#tire-hot"),
   tireSpread: document.querySelector("#tire-spread"),
   tireWear: document.querySelector("#tire-wear"),
@@ -81,6 +83,19 @@ function render(data) {
   fields.muted.textContent = data.voice?.muted ? "muted" : "live";
   fields.sttStatus.textContent = data.audio?.stt?.enabled ? "stt on" : "stt off";
   fields.ttsStatus.textContent = data.audio?.tts?.engine || data.config?.tts?.engine || "tts";
+  const pixel = data.pixel_display || {};
+  const pixelConfig = data.config?.pixel_display || {};
+  const pixelEnabled = Boolean(pixel.enabled || pixelConfig.enabled);
+  if (!pixelEnabled) {
+    fields.pixelStatus.textContent = "pixel off";
+  } else if (pixel.connected) {
+    const size = pixel.device_width && pixel.device_height
+      ? ` ${pixel.device_width}x${pixel.device_height}`
+      : "";
+    fields.pixelStatus.textContent = `pixel live${size}`;
+  } else {
+    fields.pixelStatus.textContent = pixel.last_error ? "pixel warn" : "pixel wait";
+  }
   fields.position.textContent = snap.current_position ? `P${snap.current_position}` : "--";
   fields.lap.textContent = snap.current_lap
     ? snap.total_laps
@@ -108,6 +123,7 @@ function render(data) {
   fields.speed.textContent = fmt(snap.speed_kph, " kph", 0);
   fields.rpm.textContent = fmt(snap.engine_rpm, "", 0);
   fields.gear.textContent = snap.current_gear ?? "--";
+  fields.suggestedGear.textContent = snap.suggested_gear ?? "--";
   fields.tireHot.textContent = fmt(wheelMax(snap.tire_temps), "°", 0);
   fields.tireSpread.textContent = fmt(wheelSpread(snap.tire_temps), "°", 0);
   fields.tireWear.textContent = fmt(wheelMax(snap.tire_wear_percent), "%", 0);

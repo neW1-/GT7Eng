@@ -102,6 +102,8 @@ def synthetic_frame(**overrides) -> TelemetryFrame:
         "packet_id": 1,
         "speed_kph": 100.0,
         "engine_rpm": 7000.0,
+        "min_alert_rpm": 6000.0,
+        "max_alert_rpm": 8000.0,
         "current_gear": 3,
         "throttle": 80,
         "brake": 0,

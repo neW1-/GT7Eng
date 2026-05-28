@@ -26,6 +26,9 @@ voice = [
   "faster-whisper>=1.1",
   "piper-tts>=1.2",
 ]
+pixel-display = [
+  "pypixelcolor>=0.4,<0.5",
+]
 
 [project.scripts]
 gt7eng = "gt7eng.cli:main"

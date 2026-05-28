@@ -10,6 +10,7 @@ from .alerts import AlertManager
 from .config import AppConfig
 from .llm import IntentRepair, OpenAICompatibleClient
 from .models import Alert, RaceSnapshot, TelemetryFrame
+from .pixel_display import PixelDisplayManager
 from .state import RaceState
 from .telemetry import CaptureWriter, TelemetrySource
 from .timefmt import format_spoken_delta
@@ -193,6 +194,10 @@ class RaceEngineerService:
         self._capture: CaptureWriter | None = None
         self._muted = False
         self._last_voice_debug: dict = {}
+        self.pixel_display = PixelDisplayManager(
+            config.pixel_display,
+            snapshot_provider=self.state.stale_snapshot,
+        )
 
     @property
     def snapshot(self) -> RaceSnapshot:
@@ -205,6 +210,7 @@ class RaceEngineerService:
         alerts = self.alerts.from_update(update)
         if self._capture:
             self._capture.write(frame)
+        self.pixel_display.publish(update.snapshot)
         self._append_alerts(alerts)
         return alerts
 
@@ -220,6 +226,12 @@ class RaceEngineerService:
         if self._source_task and not self._source_task.done():
             return
         self._source_task = asyncio.create_task(self._consume_source(source))
+
+    async def start_pixel_display(self) -> None:
+        await self.pixel_display.start()
+
+    async def stop_pixel_display(self) -> None:
+        await self.pixel_display.stop()
 
     async def stop_source(self) -> None:
         if self._source_task:
@@ -359,7 +371,22 @@ class RaceEngineerService:
                     "engine": self.config.tts.engine,
                     "radio_effects": self.config.tts.radio_effects,
                 },
+                "pixel_display": {
+                    "enabled": self.config.pixel_display.enabled,
+                    "rev_position": self.config.pixel_display.rev_position,
+                    "gear_layout": self.config.pixel_display.gear_layout,
+                    "width": self.config.pixel_display.width,
+                    "height": self.config.pixel_display.height,
+                    "size_source": self.config.pixel_display.size_source,
+                    "rev_scale": self.config.pixel_display.rev_scale,
+                    "rev_start_percent": self.config.pixel_display.rev_start_percent,
+                    "shift_mode": self.config.pixel_display.shift_mode,
+                    "fuel_enabled": self.config.pixel_display.fuel_enabled,
+                    "color_theme": self.config.pixel_display.color_theme,
+                    "update_hz": self.config.pixel_display.update_hz,
+                },
             },
+            "pixel_display": self.pixel_display.status(),
         }
 
     def next_voice_jobs(self, limit: int = 1) -> list[dict]:
