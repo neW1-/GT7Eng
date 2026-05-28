@@ -162,12 +162,12 @@ class PixelDisplayRenderer:
     def rev_state(self, snapshot: RaceSnapshot) -> RevBarState:
         rpm = snapshot.engine_rpm
         start_rpm, full_rpm, source = self._rev_range(snapshot)
+        if snapshot.rev_limit:
+            return RevBarState(1.0, start_rpm, full_rpm, source)
         if rpm is None:
-            percent = 1.0 if snapshot.rev_limit else 0.0
-            return RevBarState(percent, start_rpm, full_rpm, source)
+            return RevBarState(0.0, start_rpm, full_rpm, source)
         if start_rpm is None or full_rpm is None or full_rpm <= start_rpm:
-            percent = 1.0 if snapshot.rev_limit else 0.0
-            return RevBarState(percent, start_rpm, full_rpm, source)
+            return RevBarState(0.0, start_rpm, full_rpm, source)
         percent = _clamp((rpm - start_rpm) / (full_rpm - start_rpm), 0.0, 1.0)
         return RevBarState(percent, start_rpm, full_rpm, source)
 

@@ -191,6 +191,16 @@ def test_renderer_full_bar_reaches_last_pixel_at_max_alert_rpm():
     assert frame.pixel(63, 63) != (0, 0, 0)
 
 
+def test_renderer_rev_limit_forces_full_bar():
+    renderer = PixelDisplayRenderer(PixelDisplayConfig())
+    snapshot = racing_snapshot(engine_rpm=8100.0, max_alert_rpm=9000.0, rev_limit=True)
+
+    frame = renderer.render_snapshot(snapshot)
+
+    assert renderer.rev_percent(snapshot) == 1.0
+    assert frame.pixel(63, 63) != (0, 0, 0)
+
+
 def test_renderer_does_not_flash_before_rev_limit_by_default():
     renderer = PixelDisplayRenderer(PixelDisplayConfig())
     snapshot = racing_snapshot(engine_rpm=8856.0, max_alert_rpm=9000.0, rev_limit=False)
