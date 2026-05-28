@@ -32,11 +32,74 @@ const fields = {
   lastIntent: document.querySelector("#last-intent"),
   lastConfidence: document.querySelector("#last-confidence"),
   lastRepair: document.querySelector("#last-repair"),
+  controlStatus: document.querySelector("#control-status"),
+  bridgeProcess: document.querySelector("#bridge-process"),
+  bridgeChannel: document.querySelector("#bridge-channel"),
+  bridgePackets: document.querySelector("#bridge-packets"),
+  bridgeError: document.querySelector("#bridge-error"),
+  bridgeRestartNote: document.querySelector("#bridge-restart-note"),
   alerts: document.querySelector("#alerts"),
   form: document.querySelector("#chat-form"),
   input: document.querySelector("#chat-input"),
   response: document.querySelector("#chat-response"),
 };
+
+const controls = {
+  settingsForm: document.querySelector("#settings-form"),
+  preset: document.querySelector("#settings-preset"),
+  voiceMode: document.querySelector("#settings-voice-mode"),
+  muted: document.querySelector("#settings-muted"),
+  verbosityForm: document.querySelector("#verbosity-form"),
+  verbosityControls: document.querySelector("#verbosity-controls"),
+  sttForm: document.querySelector("#stt-form"),
+  sttEnabled: document.querySelector("#stt-enabled-control"),
+  sttModel: document.querySelector("#stt-model-control"),
+  sttDevice: document.querySelector("#stt-device-control"),
+  sttConfidence: document.querySelector("#stt-confidence-control"),
+  discordStt: document.querySelector("#discord-stt-control"),
+  bridgeStart: document.querySelector("#bridge-start"),
+  bridgeStop: document.querySelector("#bridge-stop"),
+  bridgeRestart: document.querySelector("#bridge-restart"),
+  pixelForm: document.querySelector("#pixel-form"),
+  pixelStart: document.querySelector("#pixel-start"),
+  pixelStop: document.querySelector("#pixel-stop"),
+  pixelPreview: document.querySelector("#pixel-preview"),
+};
+
+const pixelFields = {
+  enabled: document.querySelector("#pixel-enabled-control"),
+  address: document.querySelector("#pixel-address-control"),
+  color_theme: document.querySelector("#pixel-theme-control"),
+  brightness: document.querySelector("#pixel-brightness-control"),
+  dim_brightness: document.querySelector("#pixel-dim-control"),
+  orientation: document.querySelector("#pixel-orientation-control"),
+  update_hz: document.querySelector("#pixel-update-control"),
+  size_source: document.querySelector("#pixel-size-source-control"),
+  width: document.querySelector("#pixel-width-control"),
+  height: document.querySelector("#pixel-height-control"),
+  gear_layout: document.querySelector("#pixel-gear-layout-control"),
+  rev_position: document.querySelector("#pixel-rev-position-control"),
+  rev_scale: document.querySelector("#pixel-rev-scale-control"),
+  rev_start_percent: document.querySelector("#pixel-rev-start-control"),
+  shift_mode: document.querySelector("#pixel-shift-mode-control"),
+  shift_percent: document.querySelector("#pixel-shift-percent-control"),
+  flash_hz: document.querySelector("#pixel-flash-control"),
+  fuel_enabled: document.querySelector("#pixel-fuel-enabled-control"),
+  gear_color: document.querySelector("#pixel-gear-color-control"),
+  rev_low_color: document.querySelector("#pixel-rev-low-control"),
+  rev_mid_color: document.querySelector("#pixel-rev-mid-control"),
+  rev_high_color: document.querySelector("#pixel-rev-high-control"),
+  shift_color: document.querySelector("#pixel-shift-color-control"),
+  fuel_safe_color: document.querySelector("#pixel-fuel-safe-control"),
+  fuel_warn_color: document.querySelector("#pixel-fuel-warn-control"),
+  fuel_danger_color: document.querySelector("#pixel-fuel-danger-control"),
+  fuel_critical_color: document.querySelector("#pixel-fuel-critical-control"),
+  rpm_min: document.querySelector("#pixel-rpm-min-control"),
+  rpm_max: document.querySelector("#pixel-rpm-max-control"),
+};
+
+let controlsInitialized = false;
+let controlsDirty = false;
 
 function fmt(value, suffix = "", digits = 0) {
   if (value === null || value === undefined) return "--";
@@ -73,7 +136,36 @@ function wheelSpread(values) {
   return present.length ? Math.max(...present) - Math.min(...present) : null;
 }
 
-function render(data) {
+function fillOptions(select, options) {
+  if (!select || !Array.isArray(options)) return;
+  const current = Array.from(select.options).map((option) => option.value).join(",");
+  if (current === options.join(",")) return;
+  select.replaceChildren(
+    ...options.map((value) => {
+      const option = document.createElement("option");
+      option.value = value;
+      option.textContent = value;
+      return option;
+    })
+  );
+}
+
+function setValue(element, value) {
+  if (!element || document.activeElement === element) return;
+  if (element.type === "checkbox") {
+    element.checked = Boolean(value);
+  } else {
+    element.value = value === null || value === undefined ? "" : String(value);
+  }
+}
+
+function setControlsEnabled(allowed) {
+  document.querySelectorAll("[data-control]").forEach((element) => {
+    element.disabled = !allowed;
+  });
+}
+
+function render(data, { forceControls = false } = {}) {
   const snap = data.snapshot || {};
   fields.status.textContent = snap.connected
     ? `Telemetry live · ${fmt(snap.packet_rate_hz, " Hz", 1)} · ${snap.session_phase || "unknown"}`
@@ -83,19 +175,7 @@ function render(data) {
   fields.muted.textContent = data.voice?.muted ? "muted" : "live";
   fields.sttStatus.textContent = data.audio?.stt?.enabled ? "stt on" : "stt off";
   fields.ttsStatus.textContent = data.audio?.tts?.engine || data.config?.tts?.engine || "tts";
-  const pixel = data.pixel_display || {};
-  const pixelConfig = data.config?.pixel_display || {};
-  const pixelEnabled = Boolean(pixel.enabled || pixelConfig.enabled);
-  if (!pixelEnabled) {
-    fields.pixelStatus.textContent = "pixel off";
-  } else if (pixel.connected) {
-    const size = pixel.device_width && pixel.device_height
-      ? ` ${pixel.device_width}x${pixel.device_height}`
-      : "";
-    fields.pixelStatus.textContent = `pixel live${size}`;
-  } else {
-    fields.pixelStatus.textContent = pixel.last_error ? "pixel warn" : "pixel wait";
-  }
+  renderPixelStatus(data);
   fields.position.textContent = snap.current_position ? `P${snap.current_position}` : "--";
   fields.lap.textContent = snap.current_lap
     ? snap.total_laps
@@ -130,6 +210,35 @@ function render(data) {
   fields.incident.textContent = snap.incident_status || "--";
   fields.wheelspin.textContent = snap.driving_style?.wheelspin_events ?? 0;
   fields.lockups.textContent = snap.driving_style?.lockup_events ?? 0;
+  renderVoiceDebug(data);
+  renderBridge(data);
+  renderControls(data, { force: forceControls });
+  fields.alerts.replaceChildren(
+    ...(data.alerts || []).slice(-12).reverse().map((alert) => {
+      const item = document.createElement("li");
+      item.textContent = alert.message;
+      return item;
+    })
+  );
+}
+
+function renderPixelStatus(data) {
+  const pixel = data.pixel_display || {};
+  const pixelConfig = data.config?.pixel_display || {};
+  const pixelEnabled = Boolean(pixel.enabled || pixelConfig.enabled);
+  if (!pixelEnabled) {
+    fields.pixelStatus.textContent = "pixel off";
+  } else if (pixel.connected) {
+    const size = pixel.device_width && pixel.device_height
+      ? ` ${pixel.device_width}x${pixel.device_height}`
+      : "";
+    fields.pixelStatus.textContent = `pixel live${size}`;
+  } else {
+    fields.pixelStatus.textContent = pixel.last_error ? "pixel warn" : "pixel wait";
+  }
+}
+
+function renderVoiceDebug(data) {
   const voiceLast = data.voice?.last || {};
   const repair = voiceLast.repair || null;
   fields.lastTranscript.textContent = voiceLast.text || "--";
@@ -143,22 +252,199 @@ function render(data) {
   fields.lastRepair.textContent = repair
     ? `${repair.intent} · ${Number(repair.confidence).toFixed(2)}`
     : "--";
-  fields.alerts.replaceChildren(
-    ...(data.alerts || []).slice(-12).reverse().map((alert) => {
-      const item = document.createElement("li");
-      item.textContent = alert.message;
-      return item;
+}
+
+function renderBridge(data) {
+  const bridge = data.discord_bridge || {};
+  const heartbeat = bridge.heartbeat?.payload || {};
+  const state = bridge.restart_required ? `${bridge.state} · restart needed` : bridge.state || "--";
+  fields.bridgeProcess.textContent = bridge.pid ? `${state} (${bridge.pid})` : state;
+  fields.bridgeChannel.textContent = heartbeat.voiceChannelId || "--";
+  fields.bridgePackets.textContent = heartbeat.driverAudioPackets ?? "--";
+  fields.bridgeError.textContent = heartbeat.lastError || bridge.last_error || "--";
+  fields.bridgeRestartNote.textContent = bridge.restart_required
+    ? "Restart the bridge to apply bridge-side settings."
+    : "";
+}
+
+function renderControls(data, { force = false } = {}) {
+  const allowed = Boolean(data.control_allowed ?? data.control?.allowed);
+  fields.controlStatus.textContent = allowed
+    ? "Controls enabled on localhost. Saves update .env."
+    : data.control?.reason || "Controls are local only.";
+  setControlsEnabled(allowed);
+  initializeControls(data);
+  setControlsEnabled(allowed);
+  if (controlsDirty && !force) return;
+
+  const config = data.config || {};
+  const stt = data.audio?.stt || {};
+  setValue(controls.preset, config.preset || "endurance");
+  setValue(controls.voiceMode, data.voice?.mode || config.voice_mode || "quiet_driver");
+  setValue(controls.muted, Boolean(data.voice?.muted));
+  setValue(controls.sttEnabled, Boolean(stt.enabled));
+  setValue(controls.sttModel, stt.model || config.stt?.model || "tiny.en");
+  setValue(controls.sttDevice, stt.device || config.stt?.device || "auto");
+  setValue(controls.sttConfidence, stt.min_confidence ?? 0.55);
+  setValue(controls.discordStt, Boolean(config.discord_stt_enabled));
+
+  const verbosity = config.verbosity || {};
+  for (const [category, select] of Object.entries(verbosityControls())) {
+    setValue(select, verbosity[category] || "off");
+  }
+
+  const pixel = config.pixel_display || {};
+  for (const [name, element] of Object.entries(pixelFields)) {
+    setValue(element, pixel[name]);
+  }
+  controls.pixelPreview.src = allowed ? `/api/control/pixel-display/preview.png?t=${Date.now()}` : "";
+}
+
+function initializeControls(data) {
+  if (controlsInitialized) return;
+  const options = data.options || {};
+  fillOptions(controls.preset, options.presets || []);
+  fillOptions(controls.voiceMode, options.voice_modes || []);
+  fillOptions(controls.sttDevice, options.stt_devices || []);
+  fillOptions(pixelFields.color_theme, options.pixel?.color_themes || []);
+  fillOptions(pixelFields.size_source, options.pixel?.size_sources || []);
+  fillOptions(pixelFields.gear_layout, options.pixel?.gear_layouts || []);
+  fillOptions(pixelFields.rev_position, options.pixel?.rev_positions || []);
+  fillOptions(pixelFields.rev_scale, options.pixel?.rev_scales || []);
+  fillOptions(pixelFields.shift_mode, options.pixel?.shift_modes || []);
+
+  controls.verbosityControls.replaceChildren(
+    ...(options.verbosity_categories || []).map((category) => {
+      const label = document.createElement("label");
+      label.textContent = category;
+      const select = document.createElement("select");
+      select.dataset.control = "";
+      select.dataset.category = category;
+      fillOptions(select, options.verbosity_levels || []);
+      label.appendChild(select);
+      return label;
     })
+  );
+  watchControlChanges();
+  controlsInitialized = true;
+}
+
+function verbosityControls() {
+  return Object.fromEntries(
+    Array.from(controls.verbosityControls.querySelectorAll("select")).map((select) => [
+      select.dataset.category,
+      select,
+    ])
   );
 }
 
-async function poll() {
+function watchControlChanges() {
+  document.querySelectorAll("[data-control]").forEach((element) => {
+    element.addEventListener("input", () => {
+      controlsDirty = true;
+    });
+    element.addEventListener("change", () => {
+      controlsDirty = true;
+    });
+  });
+}
+
+async function requestJson(url, options = {}) {
+  const response = await fetch(url, {
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      ...(options.headers || {}),
+    },
+  });
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(payload.detail || `Request failed with HTTP ${response.status}`);
+  }
+  return payload;
+}
+
+async function saveControl(url, body) {
   try {
-    const response = await fetch("/api/status", { cache: "no-store" });
-    render(await response.json());
+    const payload = await requestJson(url, {
+      method: "PATCH",
+      body: JSON.stringify(body),
+    });
+    controlsDirty = false;
+    render(payload.status || (await fetchStatus()), { forceControls: true });
+  } catch (error) {
+    fields.controlStatus.textContent = error.message;
+  }
+}
+
+async function postControl(url) {
+  try {
+    const payload = await requestJson(url, { method: "POST" });
+    controlsDirty = false;
+    render(payload.status || (await fetchStatus()), { forceControls: true });
+  } catch (error) {
+    fields.controlStatus.textContent = error.message;
+  }
+}
+
+async function fetchStatus() {
+  const response = await fetch("/api/status", { cache: "no-store" });
+  return response.json();
+}
+
+async function poll(options = {}) {
+  try {
+    render(await fetchStatus(), options);
   } catch (error) {
     fields.status.textContent = "HUD disconnected";
   }
+}
+
+controls.settingsForm.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  await saveControl("/api/control/settings", {
+    preset: controls.preset.value,
+    voice_mode: controls.voiceMode.value,
+    muted: controls.muted.checked,
+  });
+});
+
+controls.verbosityForm.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const verbosity = Object.fromEntries(
+    Object.entries(verbosityControls()).map(([category, select]) => [category, select.value])
+  );
+  await saveControl("/api/control/settings", { verbosity });
+});
+
+controls.sttForm.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  await saveControl("/api/control/stt", {
+    enabled: controls.sttEnabled.checked,
+    model: controls.sttModel.value,
+    device: controls.sttDevice.value,
+    min_confidence: Number(controls.sttConfidence.value),
+    discord_enabled: controls.discordStt.checked,
+  });
+});
+
+controls.pixelForm.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  await saveControl("/api/control/pixel-display", readPixelPayload());
+});
+
+controls.bridgeStart.addEventListener("click", () => postControl("/api/control/discord-bridge/start"));
+controls.bridgeStop.addEventListener("click", () => postControl("/api/control/discord-bridge/stop"));
+controls.bridgeRestart.addEventListener("click", () => postControl("/api/control/discord-bridge/restart"));
+controls.pixelStart.addEventListener("click", () => postControl("/api/control/pixel-display/start"));
+controls.pixelStop.addEventListener("click", () => postControl("/api/control/pixel-display/stop"));
+
+function readPixelPayload() {
+  const payload = {};
+  for (const [name, element] of Object.entries(pixelFields)) {
+    payload[name] = element.type === "checkbox" ? element.checked : element.value;
+  }
+  return payload;
 }
 
 fields.form.addEventListener("submit", async (event) => {
@@ -166,7 +452,7 @@ fields.form.addEventListener("submit", async (event) => {
   const text = fields.input.value.trim();
   if (!text) return;
   fields.input.value = "";
-    const response = await fetch("/api/chat", {
+  const response = await fetch("/api/chat", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ text, source: "hud" }),
@@ -176,5 +462,5 @@ fields.form.addEventListener("submit", async (event) => {
   await poll();
 });
 
-poll();
-setInterval(poll, 1000);
+poll({ forceControls: true });
+setInterval(() => poll(), 1000);

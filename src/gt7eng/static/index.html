@@ -4,7 +4,8 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>GT7 Race Engineer</title>
-    <link rel="stylesheet" href="/static/styles.css?v=llm-intent-hud-1" />
+    <link rel="icon" href="data:," />
+    <link rel="stylesheet" href="/static/styles.css?v=control-plane-1" />
   </head>
   <body>
     <main class="shell">
@@ -104,6 +105,96 @@
         </article>
 
         <article class="panel wide">
+          <h2>Race Controls</h2>
+          <p id="control-status" class="status-note">--</p>
+          <form id="settings-form" class="control-form">
+            <label>Preset<select id="settings-preset" data-control></select></label>
+            <label>Voice Mode<select id="settings-voice-mode" data-control></select></label>
+            <label class="check-row"><input id="settings-muted" type="checkbox" data-control /> Muted</label>
+            <button type="submit" data-control>Save</button>
+          </form>
+        </article>
+
+        <article class="panel wide">
+          <h2>Verbosity</h2>
+          <form id="verbosity-form" class="control-form stacked">
+            <div id="verbosity-controls" class="control-grid"></div>
+            <button type="submit" data-control>Save</button>
+          </form>
+        </article>
+
+        <article class="panel wide">
+          <h2>STT</h2>
+          <form id="stt-form" class="control-form">
+            <label class="check-row"><input id="stt-enabled-control" type="checkbox" data-control /> Python STT</label>
+            <label>Model<input id="stt-model-control" type="text" data-control /></label>
+            <label>Device<select id="stt-device-control" data-control></select></label>
+            <label>Min Confidence<input id="stt-confidence-control" type="number" min="0" max="1" step="0.01" data-control /></label>
+            <label class="check-row"><input id="discord-stt-control" type="checkbox" data-control /> Discord STT</label>
+            <button type="submit" data-control>Save</button>
+          </form>
+        </article>
+
+        <article class="panel wide">
+          <h2>Discord Bridge</h2>
+          <dl>
+            <div><dt>Process</dt><dd id="bridge-process">--</dd></div>
+            <div><dt>Voice Channel</dt><dd id="bridge-channel">--</dd></div>
+            <div><dt>Driver Packets</dt><dd id="bridge-packets">--</dd></div>
+            <div><dt>Last Error</dt><dd id="bridge-error" class="debug-value">--</dd></div>
+          </dl>
+          <div class="button-row">
+            <button id="bridge-start" type="button" data-control>Start</button>
+            <button id="bridge-stop" type="button" data-control>Stop</button>
+            <button id="bridge-restart" type="button" data-control>Restart</button>
+          </div>
+          <p id="bridge-restart-note" class="status-note"></p>
+        </article>
+
+        <article class="panel wide">
+          <h2>Pixel Display</h2>
+          <form id="pixel-form" class="control-form stacked">
+            <div class="control-grid">
+              <label class="check-row"><input id="pixel-enabled-control" type="checkbox" data-control /> Enabled</label>
+              <label>Address<input id="pixel-address-control" type="text" data-control /></label>
+              <label>Theme<select id="pixel-theme-control" data-control></select></label>
+              <label>Brightness<input id="pixel-brightness-control" type="number" min="0" max="100" data-control /></label>
+              <label>Dim<input id="pixel-dim-control" type="number" min="0" max="100" data-control /></label>
+              <label>Orientation<input id="pixel-orientation-control" type="number" min="0" max="3" data-control /></label>
+              <label>Update Hz<input id="pixel-update-control" type="number" min="1" max="30" step="0.5" data-control /></label>
+              <label>Size Source<select id="pixel-size-source-control" data-control></select></label>
+              <label>Width<input id="pixel-width-control" type="number" min="8" max="512" data-control /></label>
+              <label>Height<input id="pixel-height-control" type="number" min="8" max="512" data-control /></label>
+              <label>Gear Layout<select id="pixel-gear-layout-control" data-control></select></label>
+              <label>Rev Position<select id="pixel-rev-position-control" data-control></select></label>
+              <label>Rev Scale<select id="pixel-rev-scale-control" data-control></select></label>
+              <label>Rev Start<input id="pixel-rev-start-control" type="number" min="0" max="0.95" step="0.01" data-control /></label>
+              <label>Shift Mode<select id="pixel-shift-mode-control" data-control></select></label>
+              <label>Shift Percent<input id="pixel-shift-percent-control" type="number" min="0" max="1" step="0.01" data-control /></label>
+              <label>Flash Hz<input id="pixel-flash-control" type="number" min="1" max="20" step="0.5" data-control /></label>
+              <label class="check-row"><input id="pixel-fuel-enabled-control" type="checkbox" data-control /> Fuel Bar</label>
+              <label>Gear Color<input id="pixel-gear-color-control" type="text" placeholder="ff8800" data-control /></label>
+              <label>Rev Low<input id="pixel-rev-low-control" type="text" placeholder="00ff00" data-control /></label>
+              <label>Rev Mid<input id="pixel-rev-mid-control" type="text" placeholder="ffee00" data-control /></label>
+              <label>Rev High<input id="pixel-rev-high-control" type="text" placeholder="ff6600" data-control /></label>
+              <label>Shift Color<input id="pixel-shift-color-control" type="text" placeholder="ffffff" data-control /></label>
+              <label>Fuel Safe<input id="pixel-fuel-safe-control" type="text" placeholder="00ff00" data-control /></label>
+              <label>Fuel Warn<input id="pixel-fuel-warn-control" type="text" placeholder="ffee00" data-control /></label>
+              <label>Fuel Danger<input id="pixel-fuel-danger-control" type="text" placeholder="ff6600" data-control /></label>
+              <label>Fuel Critical<input id="pixel-fuel-critical-control" type="text" placeholder="f00000" data-control /></label>
+              <label>RPM Min<input id="pixel-rpm-min-control" type="number" min="1" data-control /></label>
+              <label>RPM Max<input id="pixel-rpm-max-control" type="number" min="1" data-control /></label>
+            </div>
+            <div class="button-row">
+              <button type="submit" data-control>Save</button>
+              <button id="pixel-start" type="button" data-control>Start</button>
+              <button id="pixel-stop" type="button" data-control>Stop</button>
+            </div>
+          </form>
+          <img id="pixel-preview" class="pixel-preview" alt="Pixel display preview" />
+        </article>
+
+        <article class="panel wide">
           <h2>Alerts</h2>
           <ol id="alerts"></ol>
         </article>
@@ -118,6 +209,6 @@
         </article>
       </section>
     </main>
-    <script src="/static/app.js?v=suggested-gear-hud-1"></script>
+    <script src="/static/app.js?v=control-plane-1"></script>
   </body>
 </html>

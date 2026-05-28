@@ -92,6 +92,19 @@ def test_unknown_voice_mode_env_falls_back_to_quiet_driver(monkeypatch):
     assert config.voice_mode == "quiet_driver"
 
 
+def test_engineer_muted_and_verbosity_overrides_from_env(monkeypatch):
+    monkeypatch.setenv("GT7ENG_PRESET", "endurance")
+    monkeypatch.setenv("GT7ENG_ENGINEER_MUTED", "true")
+    monkeypatch.setenv("GT7ENG_VERBOSITY_FUEL", "off")
+    monkeypatch.setenv("GT7ENG_VERBOSITY_LAP", "detailed")
+
+    config = AppConfig.from_env()
+
+    assert config.engineer_muted is True
+    assert config.verbosity["fuel"] == "off"
+    assert config.verbosity["lap"] == "detailed"
+
+
 def test_pixel_display_env_defaults(monkeypatch):
     for key in PIXEL_ENV_KEYS:
         monkeypatch.delenv(key, raising=False)
