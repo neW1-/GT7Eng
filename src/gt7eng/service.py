@@ -192,7 +192,7 @@ class RaceEngineerService:
         self.acked_voice_jobs: set[str] = set()
         self._source_task: asyncio.Task | None = None
         self._capture: CaptureWriter | None = None
-        self._muted = False
+        self._muted = config.engineer_muted
         self._last_voice_debug: dict = {}
         self.pixel_display = PixelDisplayManager(
             config.pixel_display,
@@ -232,6 +232,9 @@ class RaceEngineerService:
 
     async def stop_pixel_display(self) -> None:
         await self.pixel_display.stop()
+
+    async def reconfigure_pixel_display(self) -> None:
+        await self.pixel_display.reconfigure()
 
     async def stop_source(self) -> None:
         if self._source_task:
@@ -373,7 +376,12 @@ class RaceEngineerService:
                 },
                 "pixel_display": {
                     "enabled": self.config.pixel_display.enabled,
+                    "address": self.config.pixel_display.address,
+                    "update_hz": self.config.pixel_display.update_hz,
                     "rev_position": self.config.pixel_display.rev_position,
+                    "brightness": self.config.pixel_display.brightness,
+                    "dim_brightness": self.config.pixel_display.dim_brightness,
+                    "orientation": self.config.pixel_display.orientation,
                     "gear_layout": self.config.pixel_display.gear_layout,
                     "width": self.config.pixel_display.width,
                     "height": self.config.pixel_display.height,
@@ -381,9 +389,21 @@ class RaceEngineerService:
                     "rev_scale": self.config.pixel_display.rev_scale,
                     "rev_start_percent": self.config.pixel_display.rev_start_percent,
                     "shift_mode": self.config.pixel_display.shift_mode,
+                    "shift_percent": self.config.pixel_display.shift_percent,
+                    "flash_hz": self.config.pixel_display.flash_hz,
                     "fuel_enabled": self.config.pixel_display.fuel_enabled,
                     "color_theme": self.config.pixel_display.color_theme,
-                    "update_hz": self.config.pixel_display.update_hz,
+                    "gear_color": self.config.pixel_display.gear_color,
+                    "rev_low_color": self.config.pixel_display.rev_low_color,
+                    "rev_mid_color": self.config.pixel_display.rev_mid_color,
+                    "rev_high_color": self.config.pixel_display.rev_high_color,
+                    "shift_color": self.config.pixel_display.shift_color,
+                    "fuel_safe_color": self.config.pixel_display.fuel_safe_color,
+                    "fuel_warn_color": self.config.pixel_display.fuel_warn_color,
+                    "fuel_danger_color": self.config.pixel_display.fuel_danger_color,
+                    "fuel_critical_color": self.config.pixel_display.fuel_critical_color,
+                    "rpm_min": self.config.pixel_display.rpm_min,
+                    "rpm_max": self.config.pixel_display.rpm_max,
                 },
             },
             "pixel_display": self.pixel_display.status(),
@@ -403,6 +423,7 @@ class RaceEngineerService:
 
     def set_muted(self, muted: bool) -> None:
         self._muted = muted
+        self.config.engineer_muted = muted
 
     def set_voice_mode(self, mode: str) -> None:
         if mode in {"wake_phrase", "quiet_driver", "quiet_driver_ai"}:

@@ -31,6 +31,7 @@ export class DiscordVoiceBridge {
     this.python = new PythonServiceClient(config.python);
     this.audio = new AudioQueue({ logger });
     this.jobTimer = null;
+    this.heartbeatTimer = null;
     this.receiveWatchdogTimer = null;
     this.receiveSubscriptions = new Map();
     this.intentionalDisconnect = false;
@@ -41,6 +42,7 @@ export class DiscordVoiceBridge {
     this.client.once("ready", () => {
       this.logger.info("Discord bridge ready", { user: this.client.user?.tag });
       this.startJobPolling();
+      this.startHeartbeat();
       this.startReceiveWatchdog();
       this.audio.onPlaybackChange((isPlaying) => {
         if (isPlaying) this.stopReceiveStreams();
@@ -58,6 +60,7 @@ export class DiscordVoiceBridge {
 
   async stop() {
     if (this.jobTimer) clearInterval(this.jobTimer);
+    if (this.heartbeatTimer) clearInterval(this.heartbeatTimer);
     if (this.receiveWatchdogTimer) clearInterval(this.receiveWatchdogTimer);
     this.disconnectVoice();
     await this.client.destroy();
@@ -90,6 +93,28 @@ export class DiscordVoiceBridge {
       await this.python.acknowledgeJob(job.id, "failed", error.message);
       throw error;
     }
+  }
+
+  startHeartbeat() {
+    if (this.heartbeatTimer) clearInterval(this.heartbeatTimer);
+    this.sendHeartbeat().catch((error) => {
+      this.logger.debug("Bridge heartbeat failed", { message: error.message });
+    });
+    this.heartbeatTimer = setInterval(() => {
+      this.sendHeartbeat().catch((error) => {
+        this.logger.debug("Bridge heartbeat failed", { message: error.message });
+      });
+    }, 3000);
+  }
+
+  async sendHeartbeat() {
+    await this.python.postBridgeStatus({
+      ...this.state.snapshot(),
+      pid: process.pid,
+      sttEnabled: this.config.stt.enabled,
+      autoJoinOnReady: this.config.audio.autoJoinOnReady,
+      sentAt: new Date().toISOString()
+    });
   }
 
   async resourceFactoryForJob(job) {

@@ -452,6 +452,19 @@ class PixelDisplayManager:
         await self._send_shutdown_frame()
         await self._disconnect()
 
+    async def reconfigure(self) -> None:
+        was_running = self._task is not None
+        if was_running:
+            await self.stop()
+        self._last_hash = ""
+        self._device_width = None
+        self._device_height = None
+        self._reported_device_width = None
+        self._reported_device_height = None
+        self.renderer = PixelDisplayRenderer(self.config)
+        if self.config.enabled and was_running:
+            await self.start()
+
     def publish(self, snapshot: RaceSnapshot) -> None:
         if not self.config.enabled:
             return

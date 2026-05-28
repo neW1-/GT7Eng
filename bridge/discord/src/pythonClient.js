@@ -49,6 +49,14 @@ export class PythonServiceClient {
     });
   }
 
+  async postBridgeStatus(status) {
+    await this.request("/api/discord/bridge-status", {
+      method: "POST",
+      body: status,
+      timeoutMs: this.statusTimeoutMs
+    });
+  }
+
   async postAudioSegment({ userId, startedAt, endedAt, sampleRate, channels, audio }) {
     const form = new FormData();
     form.set("user_id", userId);

@@ -156,6 +156,7 @@ class AppConfig:
     race_duration_minutes: float | None = None
     max_frame_buffer: int = 3_600
     voice_mode: VoiceMode = "quiet_driver"
+    engineer_muted: bool = False
     wake_phrase: str = "engineer"
     verbosity: dict[AlertCategory, Verbosity] = field(
         default_factory=lambda: dict(PRESETS["endurance"])
@@ -170,6 +171,10 @@ class AppConfig:
     def from_env(cls) -> "AppConfig":
         preset = os.getenv("GT7ENG_PRESET", "endurance")
         verbosity = dict(PRESETS.get(preset, PRESETS["endurance"]))
+        for category in DEFAULT_VERBOSITY:
+            value = _verbosity(os.getenv(_verbosity_env_key(category)))
+            if value is not None:
+                verbosity[category] = value
         return cls(
             preset=preset,
             ps_ip=os.getenv("GT7ENG_PS_IP") or None,
@@ -181,6 +186,11 @@ class AppConfig:
                 os.getenv("GT7ENG_RACE_DURATION_MINUTES")
             ),
             voice_mode=_voice_mode(os.getenv("GT7ENG_VOICE_MODE", "quiet_driver")),
+            engineer_muted=_bool(
+                os.getenv("GT7ENG_ENGINEER_MUTED")
+                or os.getenv("DEFAULT_ENGINEER_MUTED"),
+                False,
+            ),
             wake_phrase=os.getenv("GT7ENG_WAKE_PHRASE", "engineer").strip().lower(),
             verbosity=verbosity,
             llm=LLMConfig(
@@ -316,6 +326,19 @@ def _voice_mode(value: str) -> VoiceMode:
     if value in {"wake_phrase", "quiet_driver_ai"}:
         return value
     return "quiet_driver"
+
+
+def _verbosity(value: str | None) -> Verbosity | None:
+    if value is None:
+        return None
+    normalized = value.strip().lower()
+    if normalized in {"off", "critical", "balanced", "detailed"}:
+        return normalized  # type: ignore[return-value]
+    return None
+
+
+def _verbosity_env_key(category: str) -> str:
+    return f"GT7ENG_VERBOSITY_{category.upper()}"
 
 
 def _rev_position(value: str) -> PixelRevPosition:
