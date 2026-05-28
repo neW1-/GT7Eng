@@ -31,6 +31,9 @@ Local Gran Turismo 7 race engineer for macOS. It auto-discovers the PS5 via `gt-
 - [x] Deterministic fuel-burn answers for “fuel burn rate” and “fuel used last lap.”
 - [x] Short-turn follow-up memory for references like “which lap was that?” and “why?”
 - [x] LLM/STT/TTS calls run off the FastAPI event loop so slow local generation does not starve telemetry ingestion.
+- [x] Local-only HUD control plane for preset, category verbosity, voice mode, mute, STT settings, Discord bridge control/status, and pixel display configuration.
+- [x] HUD settings changes persist back to `.env` while keeping Discord tokens, IDs, and API secrets out of editable forms.
+- [x] Software pixel-display preview endpoint for hardware-free HUD tuning.
 
 ## Todo
 
@@ -60,7 +63,9 @@ Local Gran Turismo 7 race engineer for macOS. It auto-discovers the PS5 via `gt-
 - [x] Throttle spoken telemetry-stale alerts and keep telemetry-connected alerts silent to avoid voice loops during packet flaps.
 - [x] Add richer incident/coaching monitors for lockups, wheelspin, spins, and impact-like events.
 - [ ] Add off-track detection if GT7 exposes a reliable signal.
-- [ ] Add HUD controls for verbosity presets and voice mode.
+- [x] Add HUD controls for preset, category verbosity, voice mode, mute, and STT status.
+- [x] Add HUD Discord bridge status plus local-only start/stop/restart controls.
+- [x] Add HUD pixel display start/stop/config controls and renderer preview.
 - [ ] Add persistent session/debrief output beyond JSONL capture.
 - [ ] Package a macOS-friendly launcher once the live path is stable.
 
@@ -92,6 +97,8 @@ gt7eng run --host 0.0.0.0 --port 8001
 ```
 
 Open `http://localhost:8001` for the HUD. Live GT7 telemetry requires GT7 telemetry enabled, PS5 and Mac on the same LAN, and inbound UDP `33740` allowed by macOS firewall.
+
+HUD control note: telemetry/status remains visible over LAN, but write actions are local-only. Open the HUD from `http://127.0.0.1:8001` or `http://localhost:8001` on the Mac to change preset, category verbosity, voice mode, mute, STT, Discord bridge, or pixel display settings. Local HUD changes are persisted to `.env`; `DISCORD_STT_ENABLED` is also mirrored into `bridge/discord/.env`. Discord tokens, IDs, and API keys are not exposed in HUD forms.
 
 Fuel note: GT7 fuel is treated as percentage. `fuel_level=100.0` means a full tank, not 100 liters; fuel-per-lap is percentage points consumed per lap.
 
@@ -159,6 +166,8 @@ Preview the renderer without hardware:
 gt7eng pixel-preview /private/tmp/gt7eng-pixel-preview.png --theme warm_amber --gear 4 --suggested-gear 3 --rpm 7200 --max-alert-rpm 9000 --fuel-percent 42
 ```
 
+The localhost HUD can also start/stop the pixel display, edit display settings, persist them to `.env`, and show a small software preview image before using BLE hardware.
+
 ## Replay
 
 ```bash
@@ -181,6 +190,8 @@ Current Discord status:
 - [x] Transcribe spoken commands and route transcripts through the deterministic command parser.
 - [x] Pause receive streams while bot TTS is playing.
 - [x] Verify bot ignores its own TTS during live voice use.
+- [x] Bridge heartbeat reports process/runtime state to Python for HUD status.
+- [x] Localhost HUD can start, stop, and restart the bridge using the same `.gt7eng-run` PID/log convention as the shell scripts.
 
 Discord setup status:
 
@@ -195,6 +206,7 @@ Discord setup status:
 - [x] Confirm driver speech increments `driver_audio_packets`.
 - [x] Confirm a spoken position question works hands-free.
 - [x] Confirm spoken fuel/pit/lap questions work hands-free.
+- [x] Confirm localhost HUD renders Discord bridge process/status controls and pixel display controls.
 
 Live validation notes from 2026-05-22:
 
@@ -227,6 +239,7 @@ Live validation notes from 2026-05-28:
 - Endurance-style stint validation covered fuel burn, pit advice, and fuel-margin calls acceptably for now.
 - Spoken Discord commands for fuel, pit, lap, tire, update, quiet, and more fuel updates worked acceptably for now.
 - Discord self-TTS suppression was confirmed in live voice use.
+- Local-only HUD control plane was implemented and smoke-tested on localhost, including `.env` persistence, Discord bridge status/control, and pixel display config/preview.
 
 ## Audio Configuration
 
@@ -367,9 +380,10 @@ Remaining next work:
 
 - Capture/replay completed GT7 sessions for replay comparison and alert tuning.
 - Tune alert cooldowns and STT thresholds from real headset behavior.
-- Add HUD controls for preset/verbosity and voice mode so fewer settings require env edits.
-- Add Discord bridge status to the HUD.
 - Add local/LAN LLM smoke tests and model setup docs.
+- Add `doctor` smoke checks for the configured LLM endpoint.
+- Live-test HUD Discord bridge controls during real voice use and tune any restart/status edge cases.
+- Live-test HUD pixel display controls on BLE hardware and tune display defaults from rig feedback.
 - Add post-session debrief output and a macOS-friendly launcher after the live path stays stable.
 
 For PS5 headset use, join or transfer the Discord voice call to the PS5 and keep using the headset you already race with. The bot should sit in the same private voice channel. If you use Discord on the Mac instead, confirm the Mac microphone is receiving your voice.

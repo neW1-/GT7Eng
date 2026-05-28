@@ -42,7 +42,9 @@ The live voice path now supports short-turn conversational memory. Deterministic
   - [x] Shows live telemetry, fuel strategy, lap history, alerts, and voice status.
   - [x] Shows timed race duration and time left for endurance debugging.
   - [x] Shows last transcript, confidence, intent, and LLM repair result for voice debugging.
-  - [ ] Add HUD settings for verbosity presets and voice mode.
+  - [x] Add local-only HUD settings for preset, category verbosity, voice mode, mute, and STT status.
+  - [x] Persist HUD settings changes back to `.env` while preserving comments/order and keeping secrets out of editable forms.
+  - [x] Add local-only HUD controls for Discord bridge start/stop/restart and BLE pixel display start/stop/config.
   - [x] Includes typed chat only for test/debug use.
 
 ## Telemetry And Race State
@@ -190,8 +192,9 @@ The live voice path now supports short-turn conversational memory. Deterministic
   - [x] Session phase, STT/TTS status, tire wear estimate, incident, and driving-style panels.
   - [x] Alert feed.
   - [x] Voice mode status.
-  - [ ] Discord bot status in HUD.
-  - [ ] Settings for verbosity presets.
+  - [x] Discord bridge process and heartbeat status in HUD.
+  - [x] Settings for preset, category verbosity, voice mode, mute, STT, and pixel display configuration.
+  - [x] Local-only write guard so LAN/iPad/phone views remain read-only while localhost can mutate runtime settings.
 
 ## BLE Pixel Gear Indicator
 - [x] Add optional `pixel-display` dependency extra for `pypixelcolor` so BLE packages are not required for normal GT7Eng installs.
@@ -215,6 +218,8 @@ The live voice path now supports short-turn conversational memory. Deterministic
 - [x] Send a black frame on shutdown instead of calling `pypixelcolor.clear()`, because the upstream clear command erases stored device content.
 - [x] Add pixel display state to `/api/status`, the HUD topbar, and `gt7eng doctor`.
 - [x] Add `gt7eng pixel-preview <output.png>` for hardware-free layout, color-theme, rev-bar, suggested-gear, and fuel-bar verification.
+- [x] Add HUD pixel display controls for enable/disable, BLE address, brightness, dim brightness, orientation, update Hz, size, layout, rev bar, shift flash, theme, custom colors, fuel bar, and RPM fallback settings.
+- [x] Add a HUD pixel preview image endpoint using the software renderer so layout/theme changes can be checked without BLE hardware.
 - [ ] Live-test the BLE display on the rig and tune brightness/theme/update rate after real driving feedback.
 - [ ] Live-test fuel bar readability on the 32x32 BLE display during fuel-enabled races.
 - [ ] Tune fuel bar theme colors after night-stint and daylight rig feedback.
@@ -244,13 +249,15 @@ The live voice path now supports short-turn conversational memory. Deterministic
 - [x] 2026-05-28: Endurance-style stint validation covered fuel burn, pit advice, and fuel-margin calls acceptably for now.
 - [x] 2026-05-28: Spoken Discord commands for fuel, pit, lap, tire, update, quiet, and more fuel updates worked acceptably for now.
 - [x] 2026-05-28: Discord self-TTS suppression was confirmed in live voice use.
+- [x] 2026-05-28: Local-only HUD control plane was implemented and smoke-tested on localhost, including `.env` persistence, Discord bridge status/control, and pixel display config/preview.
 
 ## Next Work Plan
 - [ ] Capture/replay completed GT7 sessions to compare live behavior and tune lap, position, fuel, pit, and finish alerts.
-- [ ] Add HUD controls for preset, category verbosity, voice mode, mute, and STT status.
-- [ ] Add Discord bridge status to the HUD, including connected channel, packet counter, last transcript, and last intent.
 - [ ] Add post-session debrief output summarizing laps, incidents, fuel trend, tire trend, and notable alerts.
 - [ ] Add local/LAN LLM smoke tests with the recommended 16 GB Mac model setup.
+- [ ] Add live LLM endpoint smoke checks to `gt7eng doctor`.
+- [ ] Live-test HUD Discord bridge controls during real voice use and tune any restart/status edge cases.
+- [ ] Live-test HUD pixel display controls on BLE hardware and tune display defaults from rig feedback.
 - [ ] Package a macOS-friendly launcher once live validation is stable.
 
 ## Implementation Phases
@@ -266,6 +273,7 @@ The live voice path now supports short-turn conversational memory. Deterministic
 - [x] Integration hardening: reconnects, stale telemetry edge cases, bot errors, config validation, logging.
 - [x] Live GT7 smoke validation: PS5 discovery, stable packet rate, HUD/API on-track updates.
 - [x] Live GT7 validation: full short race, endurance-style race, supported spoken commands, and self-TTS suppression.
+- [x] HUD control plane: local-only settings writes, `.env` persistence, STT reload, Discord bridge process control/status, pixel display controls, and software preview.
 - [ ] Replay/tuning follow-up: captured GT7 replay comparison and alert tuning.
 
 ## Test Plan
@@ -280,6 +288,11 @@ The live voice path now supports short-turn conversational memory. Deterministic
   - [x] Short-turn memory follow-ups for best lap, last lap, fuel burn, last-lap fuel, position, expiry, and LLM context payloads.
   - [x] Alert cooldowns and verbosity.
   - [x] Session phase, tire wear, incident, driving-style, STT transcript, and audio-status API behavior.
+  - [x] `.env` writer preserves comments/order, updates known keys, appends missing keys, and writes atomically.
+  - [x] Local-only control guard allows loopback clients and rejects LAN clients.
+  - [x] HUD control endpoints persist settings and update runtime config for preset, verbosity, voice mode, mute, STT, and pixel display settings.
+  - [x] Discord bridge process manager handles missing setup, stale PID files, start/stop/restart paths, and heartbeat status.
+  - [x] Pixel display preview endpoint returns a rendered PNG without BLE hardware.
 - Replay tests:
   - [x] Synthetic race sessions.
   - [ ] Captured GT7 sessions once available.
@@ -289,6 +302,7 @@ The live voice path now supports short-turn conversational memory. Deterministic
   - [ ] Join/leave/reconnect live test.
   - [x] Live join and radio-check playback smoke test in a real Discord channel.
   - [x] Config and Python client unit tests.
+  - [x] Bridge heartbeat payload unit test.
   - [x] Driver-user audio monitoring implementation.
   - [x] PCM-to-WAV audio segment unit test.
   - [x] Live driver audio receive/STT smoke test in a real Discord channel.

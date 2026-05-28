@@ -1,6 +1,6 @@
 # Discord Voice Bridge Sidecar
 
-Node sidecar for joining a configured Discord voice channel and playing GT7Eng race engineer audio. It uses `discord.js` for slash commands and `@discordjs/voice` for voice playback.
+Node sidecar for joining a configured Discord voice channel and playing GT7Eng race engineer audio. It uses `discord.js` for slash commands and `@discordjs/voice` for voice playback, and sends a lightweight heartbeat to Python so the HUD can show bridge status.
 
 ## Commands
 
@@ -47,7 +47,7 @@ npm start
 
 ## Python Service Contract
 
-The MVP polls and posts to these JSON endpoints. Missing endpoints are handled as service errors in `/status`; playback continues for local `/radio_check`.
+The bridge polls and posts to these JSON endpoints. Missing endpoints are handled as service errors in `/status`; playback continues for local `/radio_check`.
 
 ### `GET /discord/voice/jobs?limit=1`
 
@@ -102,6 +102,24 @@ Request body:
 
 ```json
 { "mode": "quiet_driver_ai" }
+```
+
+### `POST /api/discord/bridge-status`
+
+Heartbeat sent by the bridge while it is running. Python stores the latest snapshot for `/api/status` and the localhost HUD.
+
+Request body includes process/runtime state such as:
+
+```json
+{
+  "mode": "quiet_driver_ai",
+  "muted": false,
+  "voice_channel_id": "1234567890",
+  "driver_audio_packets": 42,
+  "last_job_id": "job-123",
+  "last_error": null,
+  "uptime_seconds": 120
+}
 ```
 
 ## Audio Receive
