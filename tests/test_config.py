@@ -27,6 +27,11 @@ PIXEL_ENV_KEYS = [
     "GT7ENG_PIXEL_DISPLAY_REV_MID_COLOR",
     "GT7ENG_PIXEL_DISPLAY_REV_HIGH_COLOR",
     "GT7ENG_PIXEL_DISPLAY_SHIFT_COLOR",
+    "GT7ENG_PIXEL_DISPLAY_FUEL_ENABLED",
+    "GT7ENG_PIXEL_DISPLAY_FUEL_SAFE_COLOR",
+    "GT7ENG_PIXEL_DISPLAY_FUEL_WARN_COLOR",
+    "GT7ENG_PIXEL_DISPLAY_FUEL_DANGER_COLOR",
+    "GT7ENG_PIXEL_DISPLAY_FUEL_CRITICAL_COLOR",
     "GT7ENG_PIXEL_DISPLAY_RPM_MIN",
     "GT7ENG_PIXEL_DISPLAY_RPM_MAX",
 ]
@@ -105,6 +110,11 @@ def test_pixel_display_env_defaults(monkeypatch):
     assert config.pixel_display.rev_start_percent == 0.60
     assert config.pixel_display.shift_mode == "rev_limit"
     assert config.pixel_display.color_theme == "simdt_blue"
+    assert config.pixel_display.fuel_enabled is False
+    assert config.pixel_display.fuel_safe_color == ""
+    assert config.pixel_display.fuel_warn_color == ""
+    assert config.pixel_display.fuel_danger_color == ""
+    assert config.pixel_display.fuel_critical_color == ""
 
 
 def test_pixel_display_env_accepts_theme_and_custom_colors(monkeypatch):
@@ -121,6 +131,11 @@ def test_pixel_display_env_accepts_theme_and_custom_colors(monkeypatch):
     monkeypatch.setenv("GT7ENG_PIXEL_DISPLAY_SHIFT_MODE", "percent")
     monkeypatch.setenv("GT7ENG_PIXEL_DISPLAY_GEAR_COLOR", "#ff8800")
     monkeypatch.setenv("GT7ENG_PIXEL_DISPLAY_REV_LOW_COLOR", "not-a-color")
+    monkeypatch.setenv("GT7ENG_PIXEL_DISPLAY_FUEL_ENABLED", "true")
+    monkeypatch.setenv("GT7ENG_PIXEL_DISPLAY_FUEL_SAFE_COLOR", "#00ff00")
+    monkeypatch.setenv("GT7ENG_PIXEL_DISPLAY_FUEL_WARN_COLOR", "ffee00")
+    monkeypatch.setenv("GT7ENG_PIXEL_DISPLAY_FUEL_DANGER_COLOR", "#ff6600")
+    monkeypatch.setenv("GT7ENG_PIXEL_DISPLAY_FUEL_CRITICAL_COLOR", "f00000")
     monkeypatch.setenv("GT7ENG_PIXEL_DISPLAY_RPM_MIN", "6000")
     monkeypatch.setenv("GT7ENG_PIXEL_DISPLAY_RPM_MAX", "8000")
 
@@ -139,6 +154,11 @@ def test_pixel_display_env_accepts_theme_and_custom_colors(monkeypatch):
     assert config.pixel_display.shift_mode == "percent"
     assert config.pixel_display.gear_color == "ff8800"
     assert config.pixel_display.rev_low_color == ""
+    assert config.pixel_display.fuel_enabled is True
+    assert config.pixel_display.fuel_safe_color == "00ff00"
+    assert config.pixel_display.fuel_warn_color == "ffee00"
+    assert config.pixel_display.fuel_danger_color == "ff6600"
+    assert config.pixel_display.fuel_critical_color == "f00000"
     assert config.pixel_display.rpm_min == 6000
     assert config.pixel_display.rpm_max == 8000
 
@@ -156,6 +176,7 @@ def test_pixel_display_invalid_env_falls_back(monkeypatch):
     monkeypatch.setenv("GT7ENG_PIXEL_DISPLAY_SHIFT_MODE", "suggested")
     monkeypatch.setenv("GT7ENG_PIXEL_DISPLAY_COLOR_THEME", "purple")
     monkeypatch.setenv("GT7ENG_PIXEL_DISPLAY_REV_POSITION", "side")
+    monkeypatch.setenv("GT7ENG_PIXEL_DISPLAY_FUEL_SAFE_COLOR", "blue")
 
     config = AppConfig.from_env()
 
@@ -171,3 +192,4 @@ def test_pixel_display_invalid_env_falls_back(monkeypatch):
     assert config.pixel_display.shift_mode == "rev_limit"
     assert config.pixel_display.color_theme == "simdt_blue"
     assert config.pixel_display.rev_position == "bottom"
+    assert config.pixel_display.fuel_safe_color == ""

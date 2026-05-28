@@ -7,6 +7,7 @@ import pytest
 from gt7eng.config import PixelDisplayConfig
 from gt7eng.config import AppConfig
 from gt7eng.cli import _pixel_preview
+from gt7eng.cli import _doctor_pixel_display
 from gt7eng.models import RaceSnapshot
 from gt7eng.pixel_display import PixelDisplayManager, PixelDisplayRenderer, palette_from_config
 
@@ -55,6 +56,10 @@ def first_non_black_x_in_gear_area(frame) -> int | None:
         if frame.pixel(x, y) != (0, 0, 0)
     ]
     return min(xs) if xs else None
+
+
+def non_black_pixels_in_row(frame, y: int) -> int:
+    return sum(1 for x in range(frame.width) if frame.pixel(x, y) != (0, 0, 0))
 
 
 def test_renderer_draws_bottom_rev_bar_by_default():
@@ -155,7 +160,28 @@ def test_renderer_supports_custom_theme_overrides():
 
     assert palette.gear == (255, 136, 0)
     assert palette.rev_low == (18, 52, 86)
+    assert palette.fuel_safe == (18, 52, 86)
+    assert palette.fuel_warn == (171, 205, 239)
+    assert palette.fuel_danger == (101, 67, 33)
+    assert palette.fuel_critical == (255, 0, 0)
     assert palette.shift == (255, 0, 0)
+
+
+def test_renderer_supports_custom_fuel_color_overrides():
+    config = PixelDisplayConfig(
+        color_theme="custom",
+        fuel_safe_color="00ff00",
+        fuel_warn_color="ffee00",
+        fuel_danger_color="ff6600",
+        fuel_critical_color="ff0000",
+    )
+
+    palette = palette_from_config(config)
+
+    assert palette.fuel_safe == (0, 255, 0)
+    assert palette.fuel_warn == (255, 238, 0)
+    assert palette.fuel_danger == (255, 102, 0)
+    assert palette.fuel_critical == (255, 0, 0)
 
 
 def test_renderer_uses_env_rpm_fallback_when_snapshot_lacks_alert_range():
@@ -199,6 +225,96 @@ def test_renderer_rev_limit_forces_full_bar():
 
     assert renderer.rev_percent(snapshot) == 1.0
     assert frame.pixel(63, 63) != (0, 0, 0)
+
+
+@pytest.mark.parametrize("fuel_level", [None, 100.0, 120.0])
+def test_renderer_hides_fuel_bar_without_active_fuel_usage(fuel_level):
+    renderer = PixelDisplayRenderer(PixelDisplayConfig(fuel_enabled=True))
+
+    frame = renderer.render_snapshot(racing_snapshot(fuel_level=fuel_level))
+
+    assert renderer.fuel_state(racing_snapshot(fuel_level=fuel_level)).visible is False
+    assert non_black_pixels_in_row(frame, 0) == 0
+
+
+def test_renderer_draws_top_fuel_bar_when_rev_bar_is_bottom():
+    renderer = PixelDisplayRenderer(PixelDisplayConfig(fuel_enabled=True))
+
+    frame = renderer.render_snapshot(racing_snapshot(fuel_level=75.0))
+
+    assert renderer.fuel_state(racing_snapshot(fuel_level=75.0)).position == "top"
+    assert non_black_pixels_in_row(frame, 0) == 48
+    assert frame.pixel(47, 0) == renderer.palette.fuel_safe
+    assert frame.pixel(48, 0) == (0, 0, 0)
+    assert non_black_pixels_in_row(frame, 1) == 0
+
+
+def test_renderer_draws_bottom_fuel_bar_when_rev_bar_is_top():
+    renderer = PixelDisplayRenderer(
+        PixelDisplayConfig(fuel_enabled=True, rev_position="top"),
+        width=32,
+        height=32,
+    )
+
+    frame = renderer.render_snapshot(racing_snapshot(fuel_level=50.0))
+
+    assert renderer.fuel_state(racing_snapshot(fuel_level=50.0)).position == "bottom"
+    assert non_black_pixels_in_row(frame, 31) == 16
+    assert frame.pixel(15, 31) == renderer.palette.fuel_warn
+    assert frame.pixel(16, 31) == (0, 0, 0)
+    assert frame.pixel(0, 30) == (0, 0, 0)
+
+
+@pytest.mark.parametrize(
+    ("fuel_level", "expected_width", "zone"),
+    [
+        (75.0, 48, "safe"),
+        (50.0, 32, "warn"),
+        (20.0, 13, "danger"),
+        (10.0, 6, "critical"),
+        (0.4, 1, "critical"),
+    ],
+)
+def test_renderer_fuel_bar_width_and_warning_zones(fuel_level, expected_width, zone):
+    renderer = PixelDisplayRenderer(PixelDisplayConfig(fuel_enabled=True))
+
+    frame = renderer.render_snapshot(racing_snapshot(fuel_level=fuel_level))
+    state = renderer.fuel_state(racing_snapshot(fuel_level=fuel_level))
+
+    assert state.color_zone == zone
+    assert non_black_pixels_in_row(frame, 0) == expected_width
+
+
+@pytest.mark.parametrize(
+    ("theme", "fuel_level", "expected_color"),
+    [
+        ("simdt_blue", 75.0, (38, 216, 255)),
+        ("simdt_blue", 10.0, (255, 45, 45)),
+        ("warm_amber", 50.0, (255, 138, 36)),
+        ("race_gyr", 20.0, (255, 122, 31)),
+        ("race_gyr", 10.0, (255, 45, 45)),
+    ],
+)
+def test_renderer_fuel_bar_theme_colors(theme, fuel_level, expected_color):
+    renderer = PixelDisplayRenderer(
+        PixelDisplayConfig(fuel_enabled=True, color_theme=theme)
+    )
+
+    frame = renderer.render_snapshot(racing_snapshot(fuel_level=fuel_level))
+
+    assert frame.pixel(0, 0) == expected_color
+
+
+def test_renderer_fuel_bar_does_not_shift_existing_layout():
+    without_fuel = PixelDisplayRenderer(PixelDisplayConfig())
+    with_fuel = PixelDisplayRenderer(PixelDisplayConfig(fuel_enabled=True))
+
+    base = without_fuel.render_snapshot(racing_snapshot(current_gear=4, fuel_level=75.0))
+    fuel = with_fuel.render_snapshot(racing_snapshot(current_gear=4, fuel_level=75.0))
+
+    for y in range(1, base.height):
+        for x in range(base.width):
+            assert fuel.pixel(x, y) == base.pixel(x, y)
 
 
 def test_renderer_does_not_flash_before_rev_limit_by_default():
@@ -264,6 +380,7 @@ def test_pixel_preview_writes_png(tmp_path):
         gear=4,
         suggested_gear=3,
         rpm_percent=0.8,
+        fuel_percent=42.0,
         shift=False,
         idle=False,
         width=64,
@@ -274,6 +391,14 @@ def test_pixel_preview_writes_png(tmp_path):
 
     assert result == 0
     assert output.read_bytes().startswith(b"\x89PNG\r\n\x1a\n")
+
+
+def test_doctor_pixel_output_includes_fuel_state(capsys):
+    config = AppConfig(pixel_display=PixelDisplayConfig(fuel_enabled=True))
+
+    assert _doctor_pixel_display(config) is True
+
+    assert "fuel=on" in capsys.readouterr().out
 
 
 class FakePixelClient:

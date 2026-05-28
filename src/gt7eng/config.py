@@ -136,6 +136,11 @@ class PixelDisplayConfig:
     rev_mid_color: str = ""
     rev_high_color: str = ""
     shift_color: str = ""
+    fuel_enabled: bool = False
+    fuel_safe_color: str = ""
+    fuel_warn_color: str = ""
+    fuel_danger_color: str = ""
+    fuel_critical_color: str = ""
     rpm_min: float | None = None
     rpm_max: float | None = None
 
@@ -277,6 +282,21 @@ class AppConfig:
                 ),
                 shift_color=_hex_color_or_empty(
                     os.getenv("GT7ENG_PIXEL_DISPLAY_SHIFT_COLOR")
+                ),
+                fuel_enabled=_bool(
+                    os.getenv("GT7ENG_PIXEL_DISPLAY_FUEL_ENABLED"), False
+                ),
+                fuel_safe_color=_hex_color_or_empty(
+                    os.getenv("GT7ENG_PIXEL_DISPLAY_FUEL_SAFE_COLOR")
+                ),
+                fuel_warn_color=_hex_color_or_empty(
+                    os.getenv("GT7ENG_PIXEL_DISPLAY_FUEL_WARN_COLOR")
+                ),
+                fuel_danger_color=_hex_color_or_empty(
+                    os.getenv("GT7ENG_PIXEL_DISPLAY_FUEL_DANGER_COLOR")
+                ),
+                fuel_critical_color=_hex_color_or_empty(
+                    os.getenv("GT7ENG_PIXEL_DISPLAY_FUEL_CRITICAL_COLOR")
                 ),
                 rpm_min=_float_or_none(os.getenv("GT7ENG_PIXEL_DISPLAY_RPM_MIN")),
                 rpm_max=_float_or_none(os.getenv("GT7ENG_PIXEL_DISPLAY_RPM_MAX")),

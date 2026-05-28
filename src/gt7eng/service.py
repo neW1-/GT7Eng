@@ -381,6 +381,7 @@ class RaceEngineerService:
                     "rev_scale": self.config.pixel_display.rev_scale,
                     "rev_start_percent": self.config.pixel_display.rev_start_percent,
                     "shift_mode": self.config.pixel_display.shift_mode,
+                    "fuel_enabled": self.config.pixel_display.fuel_enabled,
                     "color_theme": self.config.pixel_display.color_theme,
                     "update_hz": self.config.pixel_display.update_hz,
                 },

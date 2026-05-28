@@ -205,13 +205,21 @@ The live voice path now supports short-turn conversational memory. Deterministic
 - [x] Normalize GT7 `min_alert_rpm` and `max_alert_rpm` into telemetry snapshots and use `max_alert_rpm` for the default wide rev-bar sweep before falling back to configured RPM values.
 - [x] Flash the gear at shift point when GT7 reports `rev_limit` by default, with optional percent-trigger mode still configurable.
 - [x] Add rev-bar tuning config for wide/alert-window scale, start percent, and shift trigger mode after rig feedback showed the alert-window bar was too compressed.
+- [x] Add optional `GT7ENG_PIXEL_DISPLAY_FUEL_ENABLED` fuel bar that renders only when GT7 fuel drops below 100%, so fuel-free races keep the display clean.
+- [x] Render the fuel bar as a 1-pixel edge indicator opposite the rev bar, preserving the existing gear layout and using otherwise free edge pixels.
+- [x] Map fuel bar width to remaining fuel percentage and use alert-aligned color zones: safe above 50%, warn at 50%, danger at 20%, critical at 10%.
+- [x] Add fuel color defaults for `simdt_blue`, `warm_amber`, and `race_gyr`, plus custom fuel hex overrides for exact tuning.
 - [x] Show dim `--` when telemetry is stale, idle, loading, paused, or not racing.
 - [x] Cap display sends at 10 Hz by default, dedupe identical frames, and use latest-snapshot rendering to avoid BLE backlog.
 - [x] Reconnect with capped backoff if BLE drops while keeping telemetry, HUD, and Discord running.
 - [x] Send a black frame on shutdown instead of calling `pypixelcolor.clear()`, because the upstream clear command erases stored device content.
 - [x] Add pixel display state to `/api/status`, the HUD topbar, and `gt7eng doctor`.
-- [x] Add `gt7eng pixel-preview <output.png>` for hardware-free layout and color-theme verification.
+- [x] Add `gt7eng pixel-preview <output.png>` for hardware-free layout, color-theme, rev-bar, suggested-gear, and fuel-bar verification.
 - [ ] Live-test the BLE display on the rig and tune brightness/theme/update rate after real driving feedback.
+- [ ] Live-test fuel bar readability on the 32x32 BLE display during fuel-enabled races.
+- [ ] Tune fuel bar theme colors after night-stint and daylight rig feedback.
+- [ ] Consider configurable fuel warning thresholds if the alert-aligned 50/20/10 zones feel too aggressive or too subtle.
+- [ ] Consider adding fuel bar state to the HUD topbar tooltip/details if `/api/status.pixel_display.fuel` is not enough during debugging.
 
 ## Current Live Validation
 - [x] 2026-05-22: PS5 auto-discovered on the LAN.

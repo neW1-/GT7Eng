@@ -4,6 +4,7 @@ import asyncio
 import binascii
 import hashlib
 import logging
+import math
 import struct
 import time
 import zlib
@@ -25,6 +26,10 @@ THEMES: dict[str, dict[str, str]] = {
         "rev_mid": "ff96f0",
         "rev_high": "ff3d86",
         "shift": "ff4aa8",
+        "fuel_safe": "26d8ff",
+        "fuel_warn": "ff96f0",
+        "fuel_danger": "ff3d86",
+        "fuel_critical": "ff2d2d",
     },
     "warm_amber": {
         "gear": "ff8a24",
@@ -32,6 +37,10 @@ THEMES: dict[str, dict[str, str]] = {
         "rev_mid": "ff5f1a",
         "rev_high": "c51616",
         "shift": "ff2400",
+        "fuel_safe": "ffb347",
+        "fuel_warn": "ff8a24",
+        "fuel_danger": "ff4b1f",
+        "fuel_critical": "c51616",
     },
     "race_gyr": {
         "gear": "f5f8ff",
@@ -39,6 +48,10 @@ THEMES: dict[str, dict[str, str]] = {
         "rev_mid": "ffd21f",
         "rev_high": "ff2d2d",
         "shift": "ff2d2d",
+        "fuel_safe": "00d36f",
+        "fuel_warn": "ffd21f",
+        "fuel_danger": "ff7a1f",
+        "fuel_critical": "ff2d2d",
     },
 }
 
@@ -85,6 +98,10 @@ class PixelPalette:
     rev_mid: Color
     rev_high: Color
     shift: Color
+    fuel_safe: Color
+    fuel_warn: Color
+    fuel_danger: Color
+    fuel_critical: Color
 
 
 @dataclass(slots=True)
@@ -93,6 +110,15 @@ class RevBarState:
     start_rpm: float | None
     full_rpm: float | None
     source: str
+
+
+@dataclass(slots=True)
+class FuelBarState:
+    enabled: bool
+    visible: bool
+    percent: float | None
+    position: str
+    color_zone: str
 
 
 class PixelClient(Protocol):
@@ -143,6 +169,7 @@ class PixelDisplayRenderer:
 
         rev_state = self.rev_state(snapshot)
         self._draw_rev_bar(pixels, rev_state.percent)
+        self._draw_fuel_bar(pixels, self.fuel_state(snapshot))
 
         shift_active = self.shift_active(snapshot, rev_state.percent)
         flash_on = True
@@ -193,6 +220,28 @@ class PixelDisplayRenderer:
             "shift_active": self.shift_active(snapshot, state.percent),
         }
 
+    def fuel_diagnostics(self, snapshot: RaceSnapshot) -> dict:
+        state = self.fuel_state(snapshot)
+        return {
+            "enabled": state.enabled,
+            "visible": state.visible,
+            "percent": state.percent,
+            "position": state.position,
+            "color_zone": state.color_zone,
+        }
+
+    def fuel_state(self, snapshot: RaceSnapshot) -> FuelBarState:
+        position = self._fuel_position()
+        if not self.config.fuel_enabled:
+            return FuelBarState(False, False, None, position, "hidden")
+        value = _finite_float(snapshot.fuel_level)
+        if value is None:
+            return FuelBarState(True, False, None, position, "hidden")
+        if value >= 100:
+            return FuelBarState(True, False, None, position, "hidden")
+        percent = _clamp(value, 0.0, 100.0)
+        return FuelBarState(True, True, percent, position, self._fuel_color_zone(percent))
+
     def _rev_range(self, snapshot: RaceSnapshot) -> tuple[float | None, float | None, str]:
         if self.config.rev_scale == "wide":
             alert_max = _positive(snapshot.max_alert_rpm)
@@ -232,6 +281,39 @@ class PixelDisplayRenderer:
                 else:
                     color = self.palette.rev_low
                 _set_pixel(pixels, self.width, x, y, color)
+
+    def _draw_fuel_bar(self, pixels: bytearray, state: FuelBarState) -> None:
+        if not state.visible or state.percent is None:
+            return
+        y = 0 if state.position == "top" else self.height - 1
+        percent = _clamp(state.percent, 0.0, 100.0)
+        filled = int(round((percent / 100.0) * self.width))
+        if percent > 0:
+            filled = max(1, filled)
+        color = self._fuel_color(state.color_zone)
+        for x in range(min(self.width, filled)):
+            _set_pixel(pixels, self.width, x, y, color)
+
+    def _fuel_position(self) -> str:
+        return "bottom" if self.config.rev_position == "top" else "top"
+
+    def _fuel_color_zone(self, percent: float) -> str:
+        if percent <= 10:
+            return "critical"
+        if percent <= 20:
+            return "danger"
+        if percent <= 50:
+            return "warn"
+        return "safe"
+
+    def _fuel_color(self, zone: str) -> Color:
+        if zone == "critical":
+            return self.palette.fuel_critical
+        if zone == "danger":
+            return self.palette.fuel_danger
+        if zone == "warn":
+            return self.palette.fuel_warn
+        return self.palette.fuel_safe
 
     def _draw_label(self, pixels: bytearray, label: str, color: Color) -> None:
         self._draw_label_in_area(pixels, label, color, 3, self.width - 3)
@@ -394,6 +476,7 @@ class PixelDisplayManager:
             "color_theme": self.config.color_theme,
             "brightness": self.config.brightness,
             "rev": self.renderer.rev_diagnostics(snapshot),
+            "fuel": self.renderer.fuel_diagnostics(snapshot),
             "last_error": self._last_error,
             "last_sent_at": self._last_sent_at,
             "frames_sent": self._frames_sent,
@@ -535,14 +618,32 @@ class PixelDisplayManager:
 def palette_from_config(config: PixelDisplayConfig) -> PixelPalette:
     base = THEMES.get(config.color_theme, THEMES["simdt_blue"])
     values = dict(base)
-    overrides = {
+    base_overrides = {
         "gear": config.gear_color,
         "rev_low": config.rev_low_color,
         "rev_mid": config.rev_mid_color,
         "rev_high": config.rev_high_color,
         "shift": config.shift_color,
     }
-    for key, value in overrides.items():
+    for key, value in base_overrides.items():
+        if value:
+            values[key] = value
+    if config.color_theme == "custom":
+        values.update(
+            {
+                "fuel_safe": values["rev_low"],
+                "fuel_warn": values["rev_mid"],
+                "fuel_danger": values["rev_high"],
+                "fuel_critical": values["shift"],
+            }
+        )
+    fuel_overrides = {
+        "fuel_safe": config.fuel_safe_color,
+        "fuel_warn": config.fuel_warn_color,
+        "fuel_danger": config.fuel_danger_color,
+        "fuel_critical": config.fuel_critical_color,
+    }
+    for key, value in fuel_overrides.items():
         if value:
             values[key] = value
     return PixelPalette(
@@ -551,6 +652,10 @@ def palette_from_config(config: PixelDisplayConfig) -> PixelPalette:
         rev_mid=_hex_to_rgb(values["rev_mid"]),
         rev_high=_hex_to_rgb(values["rev_high"]),
         shift=_hex_to_rgb(values["shift"]),
+        fuel_safe=_hex_to_rgb(values["fuel_safe"]),
+        fuel_warn=_hex_to_rgb(values["fuel_warn"]),
+        fuel_danger=_hex_to_rgb(values["fuel_danger"]),
+        fuel_critical=_hex_to_rgb(values["fuel_critical"]),
     )
 
 
@@ -653,6 +758,16 @@ def _positive(value: float | None) -> float | None:
     if value is None:
         return None
     return value if value > 0 else None
+
+
+def _finite_float(value: float | None) -> float | None:
+    if value is None:
+        return None
+    try:
+        parsed = float(value)
+    except (TypeError, ValueError):
+        return None
+    return parsed if math.isfinite(parsed) else None
 
 
 def _clamp(value: float, minimum: float, maximum: float) -> float:

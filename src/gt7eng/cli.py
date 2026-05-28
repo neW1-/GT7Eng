@@ -52,6 +52,7 @@ def main(argv: list[str] | None = None) -> int:
     preview_parser.add_argument("--rpm", type=float)
     preview_parser.add_argument("--min-alert-rpm", type=float)
     preview_parser.add_argument("--max-alert-rpm", type=float)
+    preview_parser.add_argument("--fuel-percent", type=float)
     preview_parser.add_argument("--shift", action="store_true")
     preview_parser.add_argument("--rev-limit", action="store_true")
     preview_parser.add_argument("--idle", action="store_true")
@@ -91,6 +92,7 @@ def main(argv: list[str] | None = None) -> int:
             rpm=args.rpm,
             min_alert_rpm=args.min_alert_rpm,
             max_alert_rpm=args.max_alert_rpm,
+            fuel_percent=args.fuel_percent,
             shift=args.shift,
             rev_limit=args.rev_limit,
             idle=args.idle,
@@ -203,18 +205,20 @@ def _doctor_pixel_display(config: AppConfig) -> bool:
         print(
             f"pixel      disabled package={'ok' if package_ok else 'missing'} "
             f"theme={pixel.color_theme} layout={pixel.gear_layout} "
-            f"scale={pixel.rev_scale} shift={pixel.shift_mode}"
+            f"scale={pixel.rev_scale} shift={pixel.shift_mode} "
+            f"fuel={'on' if pixel.fuel_enabled else 'off'}"
         )
         return True
     if not pixel.address:
         print(
             f"pixel      enabled package={'ok' if package_ok else 'missing'} "
-            "address=missing"
+            f"address=missing fuel={'on' if pixel.fuel_enabled else 'off'}"
         )
         return False
     if not package_ok:
         print(
             "pixel      enabled package=missing "
+            f"fuel={'on' if pixel.fuel_enabled else 'off'} "
             "install with: pip install -e '.[pixel-display]'"
         )
         return False
@@ -227,7 +231,8 @@ def _doctor_pixel_display(config: AppConfig) -> bool:
         f"pixel      connected render={pixel.width}x{pixel.height} "
         f"reported={getattr(info, 'width', '?')}x{getattr(info, 'height', '?')} "
         f"theme={pixel.color_theme} layout={pixel.gear_layout} rev={pixel.rev_position} "
-        f"scale={pixel.rev_scale} shift={pixel.shift_mode}"
+        f"scale={pixel.rev_scale} shift={pixel.shift_mode} "
+        f"fuel={'on' if pixel.fuel_enabled else 'off'}"
     )
     return True
 
@@ -253,6 +258,7 @@ def _pixel_preview(
     rpm: float | None = None,
     min_alert_rpm: float | None = None,
     max_alert_rpm: float | None = None,
+    fuel_percent: float | None = None,
     shift: bool = False,
     rev_limit: bool = False,
     idle: bool = False,
@@ -265,6 +271,8 @@ def _pixel_preview(
         config.pixel_display.color_theme = theme  # type: ignore[assignment]
     if rev_position is not None:
         config.pixel_display.rev_position = rev_position  # type: ignore[assignment]
+    if fuel_percent is not None:
+        config.pixel_display.fuel_enabled = True
     renderer = PixelDisplayRenderer(config.pixel_display, width=width, height=height)
     if idle:
         snapshot = RaceSnapshot(connected=False, session_phase="stale")
@@ -288,6 +296,7 @@ def _pixel_preview(
             max_alert_rpm=full_rpm,
             current_gear=gear,
             suggested_gear=suggested_gear,
+            fuel_level=fuel_percent,
             rev_limit=shift or rev_limit,
         )
     frame = renderer.render_snapshot(snapshot)

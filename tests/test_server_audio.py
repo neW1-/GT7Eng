@@ -38,7 +38,11 @@ def test_status_reports_audio_engines():
     assert payload["config"]["pixel_display"]["size_source"] == "auto"
     assert payload["config"]["pixel_display"]["rev_scale"] == "wide"
     assert payload["config"]["pixel_display"]["shift_mode"] == "rev_limit"
+    assert payload["config"]["pixel_display"]["fuel_enabled"] is False
     assert payload["pixel_display"]["rev"]["percent"] == 0.0
+    assert payload["pixel_display"]["fuel"]["enabled"] is False
+    assert payload["pixel_display"]["fuel"]["visible"] is False
+    assert payload["pixel_display"]["fuel"]["position"] == "top"
 
 
 def test_discord_mode_endpoint_accepts_quiet_driver_ai():
