@@ -6,6 +6,7 @@ const fields = {
   sttStatus: document.querySelector("#stt-status"),
   ttsStatus: document.querySelector("#tts-status"),
   pixelStatus: document.querySelector("#pixel-status"),
+  windStatus: document.querySelector("#wind-status"),
   position: document.querySelector("#position"),
   lap: document.querySelector("#lap"),
   raceDuration: document.querySelector("#race-duration"),
@@ -38,6 +39,10 @@ const fields = {
   bridgePackets: document.querySelector("#bridge-packets"),
   bridgeError: document.querySelector("#bridge-error"),
   bridgeRestartNote: document.querySelector("#bridge-restart-note"),
+  windCurrentLevel: document.querySelector("#wind-current-level"),
+  windTargetLevel: document.querySelector("#wind-target-level"),
+  windLastLevel: document.querySelector("#wind-last-level"),
+  windError: document.querySelector("#wind-error"),
   alerts: document.querySelector("#alerts"),
   form: document.querySelector("#chat-form"),
   input: document.querySelector("#chat-input"),
@@ -64,6 +69,9 @@ const controls = {
   pixelStart: document.querySelector("#pixel-start"),
   pixelStop: document.querySelector("#pixel-stop"),
   pixelPreview: document.querySelector("#pixel-preview"),
+  windForm: document.querySelector("#wind-form"),
+  windStart: document.querySelector("#wind-start"),
+  windStop: document.querySelector("#wind-stop"),
 };
 
 const pixelFields = {
@@ -96,6 +104,21 @@ const pixelFields = {
   fuel_critical_color: document.querySelector("#pixel-fuel-critical-control"),
   rpm_min: document.querySelector("#pixel-rpm-min-control"),
   rpm_max: document.querySelector("#pixel-rpm-max-control"),
+};
+
+const windFields = {
+  enabled: document.querySelector("#wind-enabled-control"),
+  ha_base_url: document.querySelector("#wind-ha-base-url-control"),
+  ha_entity_id: document.querySelector("#wind-entity-control"),
+  update_hz: document.querySelector("#wind-update-control"),
+  max_speed_kph: document.querySelector("#wind-max-speed-control"),
+  deadband_kph: document.querySelector("#wind-deadband-control"),
+  curve_exponent: document.querySelector("#wind-curve-control"),
+  min_level: document.querySelector("#wind-min-level-control"),
+  max_level: document.querySelector("#wind-max-level-control"),
+  smoothing_seconds: document.querySelector("#wind-smoothing-control"),
+  hysteresis_levels: document.querySelector("#wind-hysteresis-control"),
+  timeout_seconds: document.querySelector("#wind-timeout-control"),
 };
 
 let controlsInitialized = false;
@@ -176,6 +199,7 @@ function render(data, { forceControls = false } = {}) {
   fields.sttStatus.textContent = data.audio?.stt?.enabled ? "stt on" : "stt off";
   fields.ttsStatus.textContent = data.audio?.tts?.engine || data.config?.tts?.engine || "tts";
   renderPixelStatus(data);
+  renderWindStatus(data);
   fields.position.textContent = snap.current_position ? `P${snap.current_position}` : "--";
   fields.lap.textContent = snap.current_lap
     ? snap.total_laps
@@ -212,6 +236,7 @@ function render(data, { forceControls = false } = {}) {
   fields.lockups.textContent = snap.driving_style?.lockup_events ?? 0;
   renderVoiceDebug(data);
   renderBridge(data);
+  renderWind(data);
   renderControls(data, { force: forceControls });
   fields.alerts.replaceChildren(
     ...(data.alerts || []).slice(-12).reverse().map((alert) => {
@@ -220,6 +245,21 @@ function render(data, { forceControls = false } = {}) {
       return item;
     })
   );
+}
+
+function renderWindStatus(data) {
+  const wind = data.wind || {};
+  const windConfig = data.config?.wind || {};
+  const enabled = Boolean(wind.enabled || windConfig.enabled);
+  if (!enabled) {
+    fields.windStatus.textContent = "wind off";
+  } else if (wind.last_error) {
+    fields.windStatus.textContent = "wind warn";
+  } else if (wind.connected) {
+    fields.windStatus.textContent = "wind live";
+  } else {
+    fields.windStatus.textContent = "wind wait";
+  }
 }
 
 function renderPixelStatus(data) {
@@ -267,6 +307,14 @@ function renderBridge(data) {
     : "";
 }
 
+function renderWind(data) {
+  const wind = data.wind || {};
+  fields.windCurrentLevel.textContent = wind.current_level ?? "--";
+  fields.windTargetLevel.textContent = wind.target_level ?? "--";
+  fields.windLastLevel.textContent = wind.last_sent_level ?? "--";
+  fields.windError.textContent = wind.last_error || "--";
+}
+
 function renderControls(data, { force = false } = {}) {
   const allowed = Boolean(data.control_allowed ?? data.control?.allowed);
   fields.controlStatus.textContent = allowed
@@ -296,6 +344,10 @@ function renderControls(data, { force = false } = {}) {
   const pixel = config.pixel_display || {};
   for (const [name, element] of Object.entries(pixelFields)) {
     setValue(element, pixel[name]);
+  }
+  const wind = config.wind || {};
+  for (const [name, element] of Object.entries(windFields)) {
+    setValue(element, wind[name]);
   }
   controls.pixelPreview.src = allowed ? `/api/control/pixel-display/preview.png?t=${Date.now()}` : "";
 }
@@ -433,15 +485,30 @@ controls.pixelForm.addEventListener("submit", async (event) => {
   await saveControl("/api/control/pixel-display", readPixelPayload());
 });
 
+controls.windForm.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  await saveControl("/api/control/wind", readWindPayload());
+});
+
 controls.bridgeStart.addEventListener("click", () => postControl("/api/control/discord-bridge/start"));
 controls.bridgeStop.addEventListener("click", () => postControl("/api/control/discord-bridge/stop"));
 controls.bridgeRestart.addEventListener("click", () => postControl("/api/control/discord-bridge/restart"));
 controls.pixelStart.addEventListener("click", () => postControl("/api/control/pixel-display/start"));
 controls.pixelStop.addEventListener("click", () => postControl("/api/control/pixel-display/stop"));
+controls.windStart.addEventListener("click", () => postControl("/api/control/wind/start"));
+controls.windStop.addEventListener("click", () => postControl("/api/control/wind/stop"));
 
 function readPixelPayload() {
   const payload = {};
   for (const [name, element] of Object.entries(pixelFields)) {
+    payload[name] = element.type === "checkbox" ? element.checked : element.value;
+  }
+  return payload;
+}
+
+function readWindPayload() {
+  const payload = {};
+  for (const [name, element] of Object.entries(windFields)) {
     payload[name] = element.type === "checkbox" ? element.checked : element.value;
   }
   return payload;

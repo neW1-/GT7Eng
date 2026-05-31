@@ -15,6 +15,7 @@ from .state import RaceState
 from .telemetry import CaptureWriter, TelemetrySource
 from .timefmt import format_spoken_delta
 from .voice import VoiceResult, parse_voice_command
+from .wind import HomeAssistantWindManager
 
 
 @dataclass(slots=True)
@@ -198,6 +199,10 @@ class RaceEngineerService:
             config.pixel_display,
             snapshot_provider=self.state.stale_snapshot,
         )
+        self.wind = HomeAssistantWindManager(
+            config.wind,
+            snapshot_provider=self.state.stale_snapshot,
+        )
 
     @property
     def snapshot(self) -> RaceSnapshot:
@@ -211,6 +216,7 @@ class RaceEngineerService:
         if self._capture:
             self._capture.write(frame)
         self.pixel_display.publish(update.snapshot)
+        self.wind.publish(update.snapshot)
         self._append_alerts(alerts)
         return alerts
 
@@ -235,6 +241,15 @@ class RaceEngineerService:
 
     async def reconfigure_pixel_display(self) -> None:
         await self.pixel_display.reconfigure()
+
+    async def start_wind(self) -> None:
+        await self.wind.start()
+
+    async def stop_wind(self) -> None:
+        await self.wind.stop()
+
+    async def reconfigure_wind(self) -> None:
+        await self.wind.reconfigure()
 
     async def stop_source(self) -> None:
         if self._source_task:
@@ -405,8 +420,23 @@ class RaceEngineerService:
                     "rpm_min": self.config.pixel_display.rpm_min,
                     "rpm_max": self.config.pixel_display.rpm_max,
                 },
+                "wind": {
+                    "enabled": self.config.wind.enabled,
+                    "ha_base_url": self.config.wind.ha_base_url,
+                    "ha_entity_id": self.config.wind.ha_entity_id,
+                    "update_hz": self.config.wind.update_hz,
+                    "max_speed_kph": self.config.wind.max_speed_kph,
+                    "curve_exponent": self.config.wind.curve_exponent,
+                    "deadband_kph": self.config.wind.deadband_kph,
+                    "min_level": self.config.wind.min_level,
+                    "max_level": self.config.wind.max_level,
+                    "smoothing_seconds": self.config.wind.smoothing_seconds,
+                    "hysteresis_levels": self.config.wind.hysteresis_levels,
+                    "timeout_seconds": self.config.wind.timeout_seconds,
+                },
             },
             "pixel_display": self.pixel_display.status(),
+            "wind": self.wind.status(),
         }
 
     def next_voice_jobs(self, limit: int = 1) -> list[dict]:

@@ -43,6 +43,12 @@ def test_status_reports_audio_engines():
     assert payload["pixel_display"]["fuel"]["enabled"] is False
     assert payload["pixel_display"]["fuel"]["visible"] is False
     assert payload["pixel_display"]["fuel"]["position"] == "top"
+    assert payload["wind"]["enabled"] is False
+    assert payload["wind"]["ha_entity_id"] == "number.zhimi_cpa4_cee4_favorite_level"
+    assert payload["config"]["wind"]["enabled"] is False
+    assert payload["config"]["wind"]["max_level"] == 14
+    assert "ha_token" not in payload["wind"]
+    assert "ha_token" not in payload["config"]["wind"]
 
 
 def test_discord_mode_endpoint_accepts_quiet_driver_ai():
@@ -69,7 +75,19 @@ def test_hud_pixel_status_uses_runtime_or_config_enabled_state():
     assert "control_allowed" in app_js
     assert "/api/control/settings" in app_js
     assert "/api/control/pixel-display" in app_js
+    assert "/api/control/wind" in app_js
+    assert "/api/control/wind/start" in app_js
+    assert "/api/control/wind/stop" in app_js
+    assert "wind live" in app_js
+    assert "wind wait" in app_js
+    assert "wind warn" in app_js
+    assert "ha_token" not in app_js
     assert 'id="suggested-gear"' in index_html
     assert 'id="settings-form"' in index_html
     assert 'id="pixel-form"' in index_html
+    assert 'id="wind-status"' in index_html
+    assert 'id="wind-form"' in index_html
+    assert 'id="wind-start"' in index_html
+    assert 'id="wind-stop"' in index_html
+    assert "GT7ENG_WIND_HA_TOKEN" not in index_html
     assert "control-plane-1" in index_html

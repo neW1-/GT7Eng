@@ -36,6 +36,22 @@ PIXEL_ENV_KEYS = [
     "GT7ENG_PIXEL_DISPLAY_RPM_MAX",
 ]
 
+WIND_ENV_KEYS = [
+    "GT7ENG_WIND_ENABLED",
+    "GT7ENG_WIND_HA_BASE_URL",
+    "GT7ENG_WIND_HA_TOKEN",
+    "GT7ENG_WIND_HA_ENTITY_ID",
+    "GT7ENG_WIND_UPDATE_HZ",
+    "GT7ENG_WIND_MAX_SPEED_KPH",
+    "GT7ENG_WIND_CURVE_EXPONENT",
+    "GT7ENG_WIND_DEADBAND_KPH",
+    "GT7ENG_WIND_MIN_LEVEL",
+    "GT7ENG_WIND_MAX_LEVEL",
+    "GT7ENG_WIND_SMOOTHING_SECONDS",
+    "GT7ENG_WIND_HYSTERESIS_LEVELS",
+    "GT7ENG_WIND_TIMEOUT_SECONDS",
+]
+
 
 def test_load_env_file_sets_missing_values(monkeypatch, tmp_path):
     env_file = tmp_path / ".env"
@@ -206,3 +222,80 @@ def test_pixel_display_invalid_env_falls_back(monkeypatch):
     assert config.pixel_display.color_theme == "simdt_blue"
     assert config.pixel_display.rev_position == "bottom"
     assert config.pixel_display.fuel_safe_color == ""
+
+
+def test_home_assistant_wind_env_defaults(monkeypatch):
+    for key in WIND_ENV_KEYS:
+        monkeypatch.delenv(key, raising=False)
+
+    config = AppConfig.from_env()
+
+    assert config.wind.enabled is False
+    assert config.wind.ha_base_url == ""
+    assert config.wind.ha_token == ""
+    assert config.wind.ha_entity_id == "number.zhimi_cpa4_cee4_favorite_level"
+    assert config.wind.update_hz == 2.0
+    assert config.wind.max_speed_kph == 280.0
+    assert config.wind.curve_exponent == 1.6
+    assert config.wind.deadband_kph == 10.0
+    assert config.wind.min_level == 0
+    assert config.wind.max_level == 14
+    assert config.wind.smoothing_seconds == 1.0
+    assert config.wind.hysteresis_levels == 1
+    assert config.wind.timeout_seconds == 2.0
+
+
+def test_home_assistant_wind_env_accepts_overrides(monkeypatch):
+    monkeypatch.setenv("GT7ENG_WIND_ENABLED", "true")
+    monkeypatch.setenv("GT7ENG_WIND_HA_BASE_URL", "http://ha.local:8123/")
+    monkeypatch.setenv("GT7ENG_WIND_HA_TOKEN", "secret-token")
+    monkeypatch.setenv("GT7ENG_WIND_HA_ENTITY_ID", "number.rig_fan_level")
+    monkeypatch.setenv("GT7ENG_WIND_UPDATE_HZ", "1")
+    monkeypatch.setenv("GT7ENG_WIND_MAX_SPEED_KPH", "320")
+    monkeypatch.setenv("GT7ENG_WIND_CURVE_EXPONENT", "2")
+    monkeypatch.setenv("GT7ENG_WIND_DEADBAND_KPH", "5")
+    monkeypatch.setenv("GT7ENG_WIND_MIN_LEVEL", "1")
+    monkeypatch.setenv("GT7ENG_WIND_MAX_LEVEL", "10")
+    monkeypatch.setenv("GT7ENG_WIND_SMOOTHING_SECONDS", "0.5")
+    monkeypatch.setenv("GT7ENG_WIND_HYSTERESIS_LEVELS", "2")
+    monkeypatch.setenv("GT7ENG_WIND_TIMEOUT_SECONDS", "3")
+
+    config = AppConfig.from_env()
+
+    assert config.wind.enabled is True
+    assert config.wind.ha_base_url == "http://ha.local:8123"
+    assert config.wind.ha_token == "secret-token"
+    assert config.wind.ha_entity_id == "number.rig_fan_level"
+    assert config.wind.update_hz == 1.0
+    assert config.wind.max_speed_kph == 320.0
+    assert config.wind.curve_exponent == 2.0
+    assert config.wind.deadband_kph == 5.0
+    assert config.wind.min_level == 1
+    assert config.wind.max_level == 10
+    assert config.wind.smoothing_seconds == 0.5
+    assert config.wind.hysteresis_levels == 2
+    assert config.wind.timeout_seconds == 3.0
+
+
+def test_home_assistant_wind_invalid_env_falls_back(monkeypatch):
+    monkeypatch.setenv("GT7ENG_WIND_UPDATE_HZ", "99")
+    monkeypatch.setenv("GT7ENG_WIND_MAX_SPEED_KPH", "0")
+    monkeypatch.setenv("GT7ENG_WIND_CURVE_EXPONENT", "9")
+    monkeypatch.setenv("GT7ENG_WIND_DEADBAND_KPH", "999")
+    monkeypatch.setenv("GT7ENG_WIND_MIN_LEVEL", "-1")
+    monkeypatch.setenv("GT7ENG_WIND_MAX_LEVEL", "999")
+    monkeypatch.setenv("GT7ENG_WIND_SMOOTHING_SECONDS", "-1")
+    monkeypatch.setenv("GT7ENG_WIND_HYSTERESIS_LEVELS", "-1")
+    monkeypatch.setenv("GT7ENG_WIND_TIMEOUT_SECONDS", "99")
+
+    config = AppConfig.from_env()
+
+    assert config.wind.update_hz == 2.0
+    assert config.wind.max_speed_kph == 280.0
+    assert config.wind.curve_exponent == 1.6
+    assert config.wind.deadband_kph == 10.0
+    assert config.wind.min_level == 0
+    assert config.wind.max_level == 14
+    assert config.wind.smoothing_seconds == 1.0
+    assert config.wind.hysteresis_levels == 1
+    assert config.wind.timeout_seconds == 2.0

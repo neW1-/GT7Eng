@@ -34,6 +34,7 @@ Local Gran Turismo 7 race engineer for macOS. It auto-discovers the PS5 via `gt-
 - [x] Local-only HUD control plane for preset, category verbosity, voice mode, mute, STT settings, Discord bridge control/status, and pixel display configuration.
 - [x] HUD settings changes persist back to `.env` while keeping Discord tokens, IDs, and API secrets out of editable forms.
 - [x] Software pixel-display preview endpoint for hardware-free HUD tuning.
+- [x] Optional Home Assistant wind simulation maps GT7 speed to a discrete fan level.
 
 ## Todo
 
@@ -66,6 +67,7 @@ Local Gran Turismo 7 race engineer for macOS. It auto-discovers the PS5 via `gt-
 - [x] Add HUD controls for preset, category verbosity, voice mode, mute, and STT status.
 - [x] Add HUD Discord bridge status plus local-only start/stop/restart controls.
 - [x] Add HUD pixel display start/stop/config controls and renderer preview.
+- [x] Add optional Home Assistant wind simulation using the existing rig fan level entity.
 - [ ] Add persistent session/debrief output beyond JSONL capture.
 - [ ] Package a macOS-friendly launcher once the live path is stable.
 
@@ -98,7 +100,7 @@ gt7eng run --host 0.0.0.0 --port 8001
 
 Open `http://localhost:8001` for the HUD. Live GT7 telemetry requires GT7 telemetry enabled, PS5 and Mac on the same LAN, and inbound UDP `33740` allowed by macOS firewall.
 
-HUD control note: telemetry/status remains visible over LAN, but write actions are local-only. Open the HUD from `http://127.0.0.1:8001` or `http://localhost:8001` on the Mac to change preset, category verbosity, voice mode, mute, STT, Discord bridge, or pixel display settings. Local HUD changes are persisted to `.env`; `DISCORD_STT_ENABLED` is also mirrored into `bridge/discord/.env`. Discord tokens, IDs, and API keys are not exposed in HUD forms.
+HUD control note: telemetry/status remains visible over LAN, but write actions are local-only. Open the HUD from `http://127.0.0.1:8001` or `http://localhost:8001` on the Mac to change preset, category verbosity, voice mode, mute, STT, Discord bridge, pixel display, or wind settings. Local HUD changes are persisted to `.env`; `DISCORD_STT_ENABLED` is also mirrored into `bridge/discord/.env`. Discord tokens, IDs, Home Assistant tokens, and API keys are not exposed in HUD forms.
 
 Fuel note: GT7 fuel is treated as percentage. `fuel_level=100.0` means a full tank, not 100 liters; fuel-per-lap is percentage points consumed per lap.
 
@@ -167,6 +169,37 @@ gt7eng pixel-preview /private/tmp/gt7eng-pixel-preview.png --theme warm_amber --
 ```
 
 The localhost HUD can also start/stop the pixel display, edit display settings, persist them to `.env`, and show a small software preview image before using BLE hardware.
+
+## Home Assistant Wind Simulation
+
+GT7Eng can optionally drive a Home Assistant numeric fan-level entity from GT7 speed. The first implementation targets `number.zhimi_cpa4_cee4_favorite_level`, which accepts levels `0` through `14`. Level `0` is used as the POC idle/off level.
+
+Create a Home Assistant long-lived access token, then configure `.env`:
+
+```bash
+GT7ENG_WIND_ENABLED=true
+GT7ENG_WIND_HA_BASE_URL=http://homeassistant.local:8123
+GT7ENG_WIND_HA_TOKEN=your-long-lived-token
+GT7ENG_WIND_HA_ENTITY_ID=number.zhimi_cpa4_cee4_favorite_level
+GT7ENG_WIND_UPDATE_HZ=2
+GT7ENG_WIND_MAX_SPEED_KPH=280
+GT7ENG_WIND_CURVE_EXPONENT=1.6
+GT7ENG_WIND_DEADBAND_KPH=10
+GT7ENG_WIND_MIN_LEVEL=0
+GT7ENG_WIND_MAX_LEVEL=14
+GT7ENG_WIND_SMOOTHING_SECONDS=1.0
+GT7ENG_WIND_HYSTERESIS_LEVELS=1
+GT7ENG_WIND_TIMEOUT_SECONDS=2
+```
+
+The wind output uses Home Assistant REST service calls:
+
+```text
+POST /api/services/number/set_value
+{"entity_id":"number.zhimi_cpa4_cee4_favorite_level","value":7}
+```
+
+The fan level is based on speed only for now. Below `10 kph`, GT7Eng sends level `0`; above that it applies a curved speed map that reaches level `14` around `280 kph`. Commands are capped at `2 Hz`, smoothed, deduped, and retried with backoff if Home Assistant is temporarily unavailable. The HUD can start/stop wind control and edit non-secret wind settings, but `GT7ENG_WIND_HA_TOKEN` stays in `.env` only.
 
 ## Replay
 

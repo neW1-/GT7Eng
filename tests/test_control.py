@@ -74,6 +74,8 @@ def test_control_endpoints_reject_non_local_clients(tmp_path):
     response = client.patch("/api/control/settings", json={"preset": "practice"})
 
     assert response.status_code == 403
+    response = client.patch("/api/control/wind", json={"enabled": True})
+    assert response.status_code == 403
 
 
 def test_stt_control_persists_python_and_discord_settings(tmp_path):
@@ -140,6 +142,56 @@ def test_pixel_control_persists_runtime_config_and_preview(tmp_path):
 
     assert preview.status_code == 200
     assert preview.content.startswith(b"\x89PNG")
+
+
+def test_wind_control_persists_runtime_config_and_env_without_token(tmp_path):
+    config = AppConfig()
+    config.wind.ha_token = "secret-token"
+    app = create_app(config, telemetry_mode="none", project_root=tmp_path)
+    client = TestClient(app)
+
+    response = client.patch(
+        "/api/control/wind",
+        json={
+            "enabled": False,
+            "ha_base_url": "http://ha.local:8123/",
+            "ha_entity_id": "number.rig_fan_level",
+            "update_hz": 1,
+            "max_speed_kph": 320,
+            "curve_exponent": 2,
+            "deadband_kph": 5,
+            "min_level": 0,
+            "max_level": 14,
+            "smoothing_seconds": 0.5,
+            "hysteresis_levels": 2,
+            "timeout_seconds": 3,
+        },
+    )
+
+    assert response.status_code == 200
+    text = response.text
+    assert "secret-token" not in text
+    assert "GT7ENG_WIND_HA_TOKEN" not in text
+    status = response.json()["status"]
+    wind = status["config"]["wind"]
+    assert wind["enabled"] is False
+    assert wind["ha_base_url"] == "http://ha.local:8123"
+    assert wind["ha_entity_id"] == "number.rig_fan_level"
+    assert wind["update_hz"] == 1
+    assert wind["max_speed_kph"] == 320
+    assert wind["curve_exponent"] == 2
+    assert wind["deadband_kph"] == 5
+    assert wind["smoothing_seconds"] == 0.5
+    assert wind["hysteresis_levels"] == 2
+    assert wind["timeout_seconds"] == 3
+    assert status["wind"]["ha_entity_id"] == "number.rig_fan_level"
+    assert "ha_token" not in status["config"]["wind"]
+    assert "ha_token" not in status["wind"]
+    values = EnvFile(tmp_path / ".env").read_values()
+    assert values["GT7ENG_WIND_HA_BASE_URL"] == "http://ha.local:8123"
+    assert values["GT7ENG_WIND_HA_ENTITY_ID"] == "number.rig_fan_level"
+    assert values["GT7ENG_WIND_UPDATE_HZ"] == "1.0"
+    assert "GT7ENG_WIND_HA_TOKEN" not in values
 
 
 def test_discord_bridge_status_accepts_heartbeat(tmp_path):

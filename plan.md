@@ -226,6 +226,21 @@ The live voice path now supports short-turn conversational memory. Deterministic
 - [ ] Consider configurable fuel warning thresholds if the alert-aligned 50/20/10 zones feel too aggressive or too subtle.
 - [ ] Consider adding fuel bar state to the HUD topbar tooltip/details if `/api/status.pixel_display.fuel` is not enough during debugging.
 
+## Home Assistant Wind Simulation
+- [x] Add optional wind output as a sibling manager to the BLE pixel display manager.
+- [x] Use `RaceSnapshot.speed_kph` as the v1 control signal, gated to connected `racing` sessions only.
+- [x] Map speed to Home Assistant level `0..14` for `number.zhimi_cpa4_cee4_favorite_level`.
+- [x] Use a curved 280 kph speed map with a 10 kph deadband, 1 second smoothing, and 1-level hysteresis.
+- [x] Cap Home Assistant command attempts at 2 Hz instead of following GT7's roughly 60 Hz telemetry rate.
+- [x] Call Home Assistant's REST service endpoint `POST /api/services/number/set_value` instead of writing `/api/states`.
+- [x] Keep the Home Assistant token in `.env` only and exclude it from HUD/status payloads.
+- [x] Add HUD topbar status plus local-only wind start/stop/config controls for non-secret settings.
+- [x] Add `gt7eng doctor` wind readiness output without printing the token.
+- [ ] Live-test `number.zhimi_cpa4_cee4_favorite_level` on the rig and confirm level `0` is acceptable as the POC idle/off level.
+- [ ] Tune the curve, deadband, smoothing, and max speed after real fan ramp behavior is observed.
+- [ ] Consider a separate Home Assistant power-off entity or service if level `0` still produces too much airflow.
+- [ ] Consider v2 throttle, braking, or acceleration effects only after speed-only feedback is validated.
+
 ## Current Live Validation
 - [x] 2026-05-22: PS5 auto-discovered on the LAN.
 - [x] 2026-05-22: GT7 on-track telemetry reached the service at roughly 60 Hz.
