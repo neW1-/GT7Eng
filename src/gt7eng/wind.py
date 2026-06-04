@@ -125,7 +125,8 @@ class HomeAssistantWindManager:
             "max_speed_kph": self.config.max_speed_kph,
             "curve_exponent": self.config.curve_exponent,
             "deadband_kph": self.config.deadband_kph,
-            "min_level": self.config.min_level,
+            "off_level": self.config.off_level,
+            "min_active_level": self.config.min_active_level,
             "max_level": self.config.max_level,
             "smoothing_seconds": self.config.smoothing_seconds,
             "hysteresis_levels": self.config.hysteresis_levels,
@@ -165,15 +166,18 @@ class HomeAssistantWindManager:
         if speed is None or speed < self.config.deadband_kph:
             return self._off_level()
 
-        low, high = self._level_bounds()
+        low, high = self._active_level_bounds()
         span = max(0, high - low)
         if span == 0:
             return low
         normalized = _clamp(speed / max(1.0, self.config.max_speed_kph), 0.0, 1.0)
         curved = math.pow(normalized, self.config.curve_exponent)
         level = low + int(round(curved * span))
-        if level <= low:
-            level = min(high, low + 1)
+        if (
+            self.config.min_active_level <= self.config.off_level
+            and level <= self.config.off_level
+        ):
+            level = min(high, int(self.config.off_level) + 1)
         return int(_clamp(level, low, high))
 
     async def _run(self) -> None:
@@ -209,7 +213,7 @@ class HomeAssistantWindManager:
         else:
             alpha = _clamp(elapsed / smoothing, 0.0, 1.0)
             self._smoothed_level += (self._target_level - self._smoothed_level) * alpha
-        low, high = self._level_bounds()
+        low, high = self._all_level_bounds()
         return int(round(_clamp(self._smoothed_level, low, high)))
 
     def _should_send(self, level: int) -> bool:
@@ -262,12 +266,19 @@ class HomeAssistantWindManager:
         return 1.0 / max(0.1, self.config.update_hz)
 
     def _off_level(self) -> int:
-        low, _ = self._level_bounds()
-        return low
+        low, high = self._all_level_bounds()
+        return int(_clamp(int(self.config.off_level), low, high))
 
-    def _level_bounds(self) -> tuple[int, int]:
-        low = max(0, int(self.config.min_level))
-        high = max(low, int(self.config.max_level))
+    def _active_level_bounds(self) -> tuple[int, int]:
+        off = max(0, int(self.config.off_level))
+        requested_low = max(0, int(self.config.min_active_level))
+        high = max(requested_low, off, int(self.config.max_level))
+        low = off if requested_low <= off else requested_low
+        return low, high
+
+    def _all_level_bounds(self) -> tuple[int, int]:
+        low = max(0, min(int(self.config.off_level), int(self.config.min_active_level)))
+        high = max(low, int(self.config.max_level), int(self.config.off_level))
         return low, high
 
 

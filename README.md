@@ -185,7 +185,8 @@ GT7ENG_WIND_UPDATE_HZ=2
 GT7ENG_WIND_MAX_SPEED_KPH=280
 GT7ENG_WIND_CURVE_EXPONENT=1.6
 GT7ENG_WIND_DEADBAND_KPH=10
-GT7ENG_WIND_MIN_LEVEL=0
+GT7ENG_WIND_OFF_LEVEL=0
+GT7ENG_WIND_MIN_ACTIVE_LEVEL=2
 GT7ENG_WIND_MAX_LEVEL=14
 GT7ENG_WIND_SMOOTHING_SECONDS=1.0
 GT7ENG_WIND_HYSTERESIS_LEVELS=1
@@ -199,7 +200,7 @@ POST /api/services/number/set_value
 {"entity_id":"number.zhimi_cpa4_cee4_favorite_level","value":7}
 ```
 
-The fan level is based on speed only for now. Below `10 kph`, GT7Eng sends level `0`; above that it applies a curved speed map that reaches level `14` around `280 kph`. Commands are capped at `2 Hz`, smoothed, deduped, and retried with backoff if Home Assistant is temporarily unavailable. The HUD can start/stop wind control and edit non-secret wind settings, but `GT7ENG_WIND_HA_TOKEN` stays in `.env` only.
+The fan level is based on speed only for now. Below `10 kph`, GT7Eng sends `GT7ENG_WIND_OFF_LEVEL`; above that it applies a curved speed map from `GT7ENG_WIND_MIN_ACTIVE_LEVEL` to `GT7ENG_WIND_MAX_LEVEL`, reaching max around `280 kph` by default. Commands are capped at `2 Hz`, smoothed, deduped, and retried with backoff if Home Assistant is temporarily unavailable. The HUD can start/stop wind control and edit non-secret wind settings, but `GT7ENG_WIND_HA_TOKEN` stays in `.env` only.
 
 ## Replay
 

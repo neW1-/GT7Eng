@@ -243,7 +243,8 @@ def _doctor_wind(config: AppConfig) -> bool:
     if not wind.enabled:
         print(
             f"wind       disabled entity={wind.ha_entity_id} "
-            f"range={wind.min_level}-{wind.max_level} update_hz={wind.update_hz:g}"
+            f"off={wind.off_level} active={wind.min_active_level}-{wind.max_level} "
+            f"update_hz={wind.update_hz:g}"
         )
         return True
 
@@ -260,7 +261,8 @@ def _doctor_wind(config: AppConfig) -> bool:
 
     print(
         f"wind       enabled base_url={wind.ha_base_url} entity={wind.ha_entity_id} "
-        f"range={wind.min_level}-{wind.max_level} update_hz={wind.update_hz:g}"
+        f"off={wind.off_level} active={wind.min_active_level}-{wind.max_level} "
+        f"update_hz={wind.update_hz:g}"
     )
     return True
 

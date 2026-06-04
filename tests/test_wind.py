@@ -58,6 +58,31 @@ def test_target_level_maps_speed_curve_and_clamps():
     assert manager.target_level(snapshot(session_phase="paused")) == 0
 
 
+@pytest.mark.parametrize(
+    ("speed_kph", "expected_level"),
+    [
+        (30.0, 2),
+        (60.0, 3),
+        (90.0, 4),
+        (120.0, 5),
+        (160.0, 7),
+        (220.0, 10),
+    ],
+)
+def test_target_level_supports_separate_off_and_min_active_levels(
+    speed_kph,
+    expected_level,
+):
+    manager = manager_for(
+        wind_config(off_level=0, min_active_level=2, max_level=14),
+        FakeWindClient(),
+    )
+
+    assert manager.target_level(snapshot(speed_kph=9.9)) == 0
+    assert manager.target_level(snapshot(speed_kph=speed_kph)) == expected_level
+    assert manager.target_level(snapshot(session_phase="paused", speed_kph=speed_kph)) == 0
+
+
 @pytest.mark.asyncio
 async def test_manager_sends_deduped_levels():
     fake = FakeWindClient()

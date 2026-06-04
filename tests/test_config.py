@@ -45,6 +45,8 @@ WIND_ENV_KEYS = [
     "GT7ENG_WIND_MAX_SPEED_KPH",
     "GT7ENG_WIND_CURVE_EXPONENT",
     "GT7ENG_WIND_DEADBAND_KPH",
+    "GT7ENG_WIND_OFF_LEVEL",
+    "GT7ENG_WIND_MIN_ACTIVE_LEVEL",
     "GT7ENG_WIND_MIN_LEVEL",
     "GT7ENG_WIND_MAX_LEVEL",
     "GT7ENG_WIND_SMOOTHING_SECONDS",
@@ -238,7 +240,8 @@ def test_home_assistant_wind_env_defaults(monkeypatch):
     assert config.wind.max_speed_kph == 280.0
     assert config.wind.curve_exponent == 1.6
     assert config.wind.deadband_kph == 10.0
-    assert config.wind.min_level == 0
+    assert config.wind.off_level == 0
+    assert config.wind.min_active_level == 0
     assert config.wind.max_level == 14
     assert config.wind.smoothing_seconds == 1.0
     assert config.wind.hysteresis_levels == 1
@@ -254,7 +257,8 @@ def test_home_assistant_wind_env_accepts_overrides(monkeypatch):
     monkeypatch.setenv("GT7ENG_WIND_MAX_SPEED_KPH", "320")
     monkeypatch.setenv("GT7ENG_WIND_CURVE_EXPONENT", "2")
     monkeypatch.setenv("GT7ENG_WIND_DEADBAND_KPH", "5")
-    monkeypatch.setenv("GT7ENG_WIND_MIN_LEVEL", "1")
+    monkeypatch.setenv("GT7ENG_WIND_OFF_LEVEL", "0")
+    monkeypatch.setenv("GT7ENG_WIND_MIN_ACTIVE_LEVEL", "2")
     monkeypatch.setenv("GT7ENG_WIND_MAX_LEVEL", "10")
     monkeypatch.setenv("GT7ENG_WIND_SMOOTHING_SECONDS", "0.5")
     monkeypatch.setenv("GT7ENG_WIND_HYSTERESIS_LEVELS", "2")
@@ -270,7 +274,8 @@ def test_home_assistant_wind_env_accepts_overrides(monkeypatch):
     assert config.wind.max_speed_kph == 320.0
     assert config.wind.curve_exponent == 2.0
     assert config.wind.deadband_kph == 5.0
-    assert config.wind.min_level == 1
+    assert config.wind.off_level == 0
+    assert config.wind.min_active_level == 2
     assert config.wind.max_level == 10
     assert config.wind.smoothing_seconds == 0.5
     assert config.wind.hysteresis_levels == 2
@@ -282,6 +287,8 @@ def test_home_assistant_wind_invalid_env_falls_back(monkeypatch):
     monkeypatch.setenv("GT7ENG_WIND_MAX_SPEED_KPH", "0")
     monkeypatch.setenv("GT7ENG_WIND_CURVE_EXPONENT", "9")
     monkeypatch.setenv("GT7ENG_WIND_DEADBAND_KPH", "999")
+    monkeypatch.setenv("GT7ENG_WIND_OFF_LEVEL", "999")
+    monkeypatch.setenv("GT7ENG_WIND_MIN_ACTIVE_LEVEL", "-1")
     monkeypatch.setenv("GT7ENG_WIND_MIN_LEVEL", "-1")
     monkeypatch.setenv("GT7ENG_WIND_MAX_LEVEL", "999")
     monkeypatch.setenv("GT7ENG_WIND_SMOOTHING_SECONDS", "-1")
@@ -294,8 +301,33 @@ def test_home_assistant_wind_invalid_env_falls_back(monkeypatch):
     assert config.wind.max_speed_kph == 280.0
     assert config.wind.curve_exponent == 1.6
     assert config.wind.deadband_kph == 10.0
-    assert config.wind.min_level == 0
+    assert config.wind.off_level == 0
+    assert config.wind.min_active_level == 0
     assert config.wind.max_level == 14
     assert config.wind.smoothing_seconds == 1.0
     assert config.wind.hysteresis_levels == 1
     assert config.wind.timeout_seconds == 2.0
+
+
+def test_home_assistant_wind_legacy_min_level_sets_off_and_active(monkeypatch):
+    for key in WIND_ENV_KEYS:
+        monkeypatch.delenv(key, raising=False)
+    monkeypatch.setenv("GT7ENG_WIND_MIN_LEVEL", "3")
+
+    config = AppConfig.from_env()
+
+    assert config.wind.off_level == 3
+    assert config.wind.min_active_level == 3
+
+
+def test_home_assistant_wind_new_level_keys_override_legacy_min_level(monkeypatch):
+    for key in WIND_ENV_KEYS:
+        monkeypatch.delenv(key, raising=False)
+    monkeypatch.setenv("GT7ENG_WIND_OFF_LEVEL", "0")
+    monkeypatch.setenv("GT7ENG_WIND_MIN_ACTIVE_LEVEL", "2")
+    monkeypatch.setenv("GT7ENG_WIND_MIN_LEVEL", "3")
+
+    config = AppConfig.from_env()
+
+    assert config.wind.off_level == 0
+    assert config.wind.min_active_level == 2

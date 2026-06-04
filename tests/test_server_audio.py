@@ -46,6 +46,8 @@ def test_status_reports_audio_engines():
     assert payload["wind"]["enabled"] is False
     assert payload["wind"]["ha_entity_id"] == "number.zhimi_cpa4_cee4_favorite_level"
     assert payload["config"]["wind"]["enabled"] is False
+    assert payload["config"]["wind"]["off_level"] == 0
+    assert payload["config"]["wind"]["min_active_level"] == 0
     assert payload["config"]["wind"]["max_level"] == 14
     assert "ha_token" not in payload["wind"]
     assert "ha_token" not in payload["config"]["wind"]
@@ -90,4 +92,4 @@ def test_hud_pixel_status_uses_runtime_or_config_enabled_state():
     assert 'id="wind-start"' in index_html
     assert 'id="wind-stop"' in index_html
     assert "GT7ENG_WIND_HA_TOKEN" not in index_html
-    assert "control-plane-1" in index_html
+    assert "control-plane-2" in index_html

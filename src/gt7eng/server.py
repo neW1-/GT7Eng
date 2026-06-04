@@ -64,7 +64,8 @@ WIND_ENV_KEYS = {
     "max_speed_kph": "GT7ENG_WIND_MAX_SPEED_KPH",
     "curve_exponent": "GT7ENG_WIND_CURVE_EXPONENT",
     "deadband_kph": "GT7ENG_WIND_DEADBAND_KPH",
-    "min_level": "GT7ENG_WIND_MIN_LEVEL",
+    "off_level": "GT7ENG_WIND_OFF_LEVEL",
+    "min_active_level": "GT7ENG_WIND_MIN_ACTIVE_LEVEL",
     "max_level": "GT7ENG_WIND_MAX_LEVEL",
     "smoothing_seconds": "GT7ENG_WIND_SMOOTHING_SECONDS",
     "hysteresis_levels": "GT7ENG_WIND_HYSTERESIS_LEVELS",
@@ -232,20 +233,41 @@ def _apply_wind_payload(wind: WindConfig, payload: dict[str, Any]) -> dict[str, 
         set_value("curve_exponent", _float_range_value(payload["curve_exponent"], "curve_exponent", 0.1, 5.0))
     if "deadband_kph" in payload:
         set_value("deadband_kph", _float_range_value(payload["deadband_kph"], "deadband_kph", 0.0, 100.0))
-    next_min_level = (
-        _int_range_value(payload["min_level"], "min_level", 0, 100)
+    min_active_payload_key = (
+        "min_active_level"
+        if "min_active_level" in payload
+        else "min_level"
         if "min_level" in payload
-        else wind.min_level
+        else None
+    )
+    next_off_level = (
+        _int_range_value(payload["off_level"], "off_level", 0, 100)
+        if "off_level" in payload
+        else wind.off_level
+    )
+    next_min_active_level = (
+        _int_range_value(
+            payload[min_active_payload_key],
+            "min_active_level",
+            0,
+            100,
+        )
+        if min_active_payload_key is not None
+        else wind.min_active_level
     )
     next_max_level = (
         _int_range_value(payload["max_level"], "max_level", 0, 100)
         if "max_level" in payload
         else wind.max_level
     )
-    if next_max_level < next_min_level:
-        raise ValueError("max_level must be greater than or equal to min_level")
-    if "min_level" in payload:
-        set_value("min_level", next_min_level)
+    if next_max_level < next_min_active_level:
+        raise ValueError("max_level must be greater than or equal to min_active_level")
+    if next_max_level < next_off_level:
+        raise ValueError("max_level must be greater than or equal to off_level")
+    if "off_level" in payload:
+        set_value("off_level", next_off_level)
+    if min_active_payload_key is not None:
+        set_value("min_active_level", next_min_active_level)
     if "max_level" in payload:
         set_value("max_level", next_max_level)
     if "smoothing_seconds" in payload:

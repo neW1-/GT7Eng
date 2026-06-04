@@ -155,7 +155,8 @@ class WindConfig:
     max_speed_kph: float = 280.0
     curve_exponent: float = 1.6
     deadband_kph: float = 10.0
-    min_level: int = 0
+    off_level: int = 0
+    min_active_level: int = 0
     max_level: int = 14
     smoothing_seconds: float = 1.0
     hysteresis_levels: int = 1
@@ -350,7 +351,20 @@ class AppConfig:
                 deadband_kph=_float_range(
                     os.getenv("GT7ENG_WIND_DEADBAND_KPH"), 10.0, 0.0, 100.0
                 ),
-                min_level=_int_range(os.getenv("GT7ENG_WIND_MIN_LEVEL"), 0, 0, 100),
+                off_level=_int_range(
+                    os.getenv("GT7ENG_WIND_OFF_LEVEL")
+                    or os.getenv("GT7ENG_WIND_MIN_LEVEL"),
+                    0,
+                    0,
+                    100,
+                ),
+                min_active_level=_int_range(
+                    os.getenv("GT7ENG_WIND_MIN_ACTIVE_LEVEL")
+                    or os.getenv("GT7ENG_WIND_MIN_LEVEL"),
+                    0,
+                    0,
+                    100,
+                ),
                 max_level=_int_range(os.getenv("GT7ENG_WIND_MAX_LEVEL"), 14, 0, 100),
                 smoothing_seconds=_float_range(
                     os.getenv("GT7ENG_WIND_SMOOTHING_SECONDS"), 1.0, 0.0, 10.0

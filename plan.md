@@ -230,6 +230,7 @@ The live voice path now supports short-turn conversational memory. Deterministic
 - [x] Add optional wind output as a sibling manager to the BLE pixel display manager.
 - [x] Use `RaceSnapshot.speed_kph` as the v1 control signal, gated to connected `racing` sessions only.
 - [x] Map speed to Home Assistant level `0..14` for `number.zhimi_cpa4_cee4_favorite_level`.
+- [x] Split wind off level from minimum active level so stopped telemetry can use `0` while moving airflow starts at `2`.
 - [x] Use a curved 280 kph speed map with a 10 kph deadband, 1 second smoothing, and 1-level hysteresis.
 - [x] Cap Home Assistant command attempts at 2 Hz instead of following GT7's roughly 60 Hz telemetry rate.
 - [x] Call Home Assistant's REST service endpoint `POST /api/services/number/set_value` instead of writing `/api/states`.

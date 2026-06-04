@@ -160,7 +160,8 @@ def test_wind_control_persists_runtime_config_and_env_without_token(tmp_path):
             "max_speed_kph": 320,
             "curve_exponent": 2,
             "deadband_kph": 5,
-            "min_level": 0,
+            "off_level": 0,
+            "min_active_level": 2,
             "max_level": 14,
             "smoothing_seconds": 0.5,
             "hysteresis_levels": 2,
@@ -181,6 +182,8 @@ def test_wind_control_persists_runtime_config_and_env_without_token(tmp_path):
     assert wind["max_speed_kph"] == 320
     assert wind["curve_exponent"] == 2
     assert wind["deadband_kph"] == 5
+    assert wind["off_level"] == 0
+    assert wind["min_active_level"] == 2
     assert wind["smoothing_seconds"] == 0.5
     assert wind["hysteresis_levels"] == 2
     assert wind["timeout_seconds"] == 3
@@ -191,6 +194,8 @@ def test_wind_control_persists_runtime_config_and_env_without_token(tmp_path):
     assert values["GT7ENG_WIND_HA_BASE_URL"] == "http://ha.local:8123"
     assert values["GT7ENG_WIND_HA_ENTITY_ID"] == "number.rig_fan_level"
     assert values["GT7ENG_WIND_UPDATE_HZ"] == "1.0"
+    assert values["GT7ENG_WIND_OFF_LEVEL"] == "0"
+    assert values["GT7ENG_WIND_MIN_ACTIVE_LEVEL"] == "2"
     assert "GT7ENG_WIND_HA_TOKEN" not in values
 
 
