@@ -21,6 +21,7 @@
           <span id="stt-status">stt off</span>
           <span id="tts-status">tts</span>
           <span id="pixel-status">pixel off</span>
+          <span id="wind-status">wind off</span>
         </div>
       </section>
 
@@ -195,6 +196,38 @@
         </article>
 
         <article class="panel wide">
+          <h2>Wind</h2>
+          <dl>
+            <div><dt>Current</dt><dd id="wind-current-level">--</dd></div>
+            <div><dt>Target</dt><dd id="wind-target-level">--</dd></div>
+            <div><dt>Last Sent</dt><dd id="wind-last-level">--</dd></div>
+            <div><dt>Last Error</dt><dd id="wind-error" class="debug-value">--</dd></div>
+          </dl>
+          <form id="wind-form" class="control-form stacked">
+            <div class="control-grid">
+              <label class="check-row"><input id="wind-enabled-control" type="checkbox" data-control /> Enabled</label>
+              <label>HA Base URL<input id="wind-ha-base-url-control" type="text" placeholder="http://homeassistant.local:8123" data-control /></label>
+              <label>Entity ID<input id="wind-entity-control" type="text" data-control /></label>
+              <label>Update Hz<input id="wind-update-control" type="number" min="0.1" max="10" step="0.1" data-control /></label>
+              <label>Max Speed<input id="wind-max-speed-control" type="number" min="1" max="600" step="1" data-control /></label>
+              <label>Deadband<input id="wind-deadband-control" type="number" min="0" max="100" step="1" data-control /></label>
+              <label>Curve<input id="wind-curve-control" type="number" min="0.1" max="5" step="0.1" data-control /></label>
+              <label>Off Level<input id="wind-off-level-control" type="number" min="0" max="100" step="1" data-control /></label>
+              <label>Min Active<input id="wind-min-active-level-control" type="number" min="0" max="100" step="1" data-control /></label>
+              <label>Max Level<input id="wind-max-level-control" type="number" min="0" max="100" step="1" data-control /></label>
+              <label>Smoothing<input id="wind-smoothing-control" type="number" min="0" max="10" step="0.1" data-control /></label>
+              <label>Hysteresis<input id="wind-hysteresis-control" type="number" min="0" max="100" step="1" data-control /></label>
+              <label>Timeout<input id="wind-timeout-control" type="number" min="0.1" max="30" step="0.1" data-control /></label>
+            </div>
+            <div class="button-row">
+              <button type="submit" data-control>Save</button>
+              <button id="wind-start" type="button" data-control>Start</button>
+              <button id="wind-stop" type="button" data-control>Stop</button>
+            </div>
+          </form>
+        </article>
+
+        <article class="panel wide">
           <h2>Alerts</h2>
           <ol id="alerts"></ol>
         </article>
@@ -209,6 +242,6 @@
         </article>
       </section>
     </main>
-    <script src="/static/app.js?v=control-plane-1"></script>
+    <script src="/static/app.js?v=control-plane-2"></script>
   </body>
 </html>

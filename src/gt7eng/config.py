@@ -146,6 +146,24 @@ class PixelDisplayConfig:
 
 
 @dataclass(slots=True)
+class WindConfig:
+    enabled: bool = False
+    ha_base_url: str = ""
+    ha_token: str = ""
+    ha_entity_id: str = "number.zhimi_cpa4_cee4_favorite_level"
+    update_hz: float = 2.0
+    max_speed_kph: float = 280.0
+    curve_exponent: float = 1.6
+    deadband_kph: float = 10.0
+    off_level: int = 0
+    min_active_level: int = 0
+    max_level: int = 14
+    smoothing_seconds: float = 1.0
+    hysteresis_levels: int = 1
+    timeout_seconds: float = 2.0
+
+
+@dataclass(slots=True)
 class AppConfig:
     preset: str = "endurance"
     ps_ip: str | None = None
@@ -166,6 +184,7 @@ class AppConfig:
     stt: STTConfig = field(default_factory=STTConfig)
     tts: TTSConfig = field(default_factory=TTSConfig)
     pixel_display: PixelDisplayConfig = field(default_factory=PixelDisplayConfig)
+    wind: WindConfig = field(default_factory=WindConfig)
 
     @classmethod
     def from_env(cls) -> "AppConfig":
@@ -310,6 +329,52 @@ class AppConfig:
                 ),
                 rpm_min=_float_or_none(os.getenv("GT7ENG_PIXEL_DISPLAY_RPM_MIN")),
                 rpm_max=_float_or_none(os.getenv("GT7ENG_PIXEL_DISPLAY_RPM_MAX")),
+            ),
+            wind=WindConfig(
+                enabled=_bool(os.getenv("GT7ENG_WIND_ENABLED"), False),
+                ha_base_url=os.getenv("GT7ENG_WIND_HA_BASE_URL", "").strip().rstrip("/"),
+                ha_token=os.getenv("GT7ENG_WIND_HA_TOKEN", "").strip(),
+                ha_entity_id=(
+                    os.getenv(
+                        "GT7ENG_WIND_HA_ENTITY_ID",
+                        "number.zhimi_cpa4_cee4_favorite_level",
+                    ).strip()
+                    or "number.zhimi_cpa4_cee4_favorite_level"
+                ),
+                update_hz=_float_range(os.getenv("GT7ENG_WIND_UPDATE_HZ"), 2.0, 0.1, 10.0),
+                max_speed_kph=_float_range(
+                    os.getenv("GT7ENG_WIND_MAX_SPEED_KPH"), 280.0, 1.0, 600.0
+                ),
+                curve_exponent=_float_range(
+                    os.getenv("GT7ENG_WIND_CURVE_EXPONENT"), 1.6, 0.1, 5.0
+                ),
+                deadband_kph=_float_range(
+                    os.getenv("GT7ENG_WIND_DEADBAND_KPH"), 10.0, 0.0, 100.0
+                ),
+                off_level=_int_range(
+                    os.getenv("GT7ENG_WIND_OFF_LEVEL")
+                    or os.getenv("GT7ENG_WIND_MIN_LEVEL"),
+                    0,
+                    0,
+                    100,
+                ),
+                min_active_level=_int_range(
+                    os.getenv("GT7ENG_WIND_MIN_ACTIVE_LEVEL")
+                    or os.getenv("GT7ENG_WIND_MIN_LEVEL"),
+                    0,
+                    0,
+                    100,
+                ),
+                max_level=_int_range(os.getenv("GT7ENG_WIND_MAX_LEVEL"), 14, 0, 100),
+                smoothing_seconds=_float_range(
+                    os.getenv("GT7ENG_WIND_SMOOTHING_SECONDS"), 1.0, 0.0, 10.0
+                ),
+                hysteresis_levels=_int_range(
+                    os.getenv("GT7ENG_WIND_HYSTERESIS_LEVELS"), 1, 0, 100
+                ),
+                timeout_seconds=_float_range(
+                    os.getenv("GT7ENG_WIND_TIMEOUT_SECONDS"), 2.0, 0.1, 30.0
+                ),
             ),
         )
 

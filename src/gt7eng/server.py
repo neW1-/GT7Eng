@@ -3,7 +3,7 @@ import tempfile
 from pathlib import Path
 from typing import Any
 
-from .config import DEFAULT_VERBOSITY, PRESETS, AppConfig, PixelDisplayConfig
+from .config import DEFAULT_VERBOSITY, PRESETS, AppConfig, PixelDisplayConfig, WindConfig
 from .control import DiscordBridgeManager, EnvFile, is_local_host
 from .models import RaceSnapshot
 from .pixel_display import PixelDisplayRenderer
@@ -54,6 +54,22 @@ PIXEL_ENV_KEYS = {
     "fuel_critical_color": "GT7ENG_PIXEL_DISPLAY_FUEL_CRITICAL_COLOR",
     "rpm_min": "GT7ENG_PIXEL_DISPLAY_RPM_MIN",
     "rpm_max": "GT7ENG_PIXEL_DISPLAY_RPM_MAX",
+}
+
+WIND_ENV_KEYS = {
+    "enabled": "GT7ENG_WIND_ENABLED",
+    "ha_base_url": "GT7ENG_WIND_HA_BASE_URL",
+    "ha_entity_id": "GT7ENG_WIND_HA_ENTITY_ID",
+    "update_hz": "GT7ENG_WIND_UPDATE_HZ",
+    "max_speed_kph": "GT7ENG_WIND_MAX_SPEED_KPH",
+    "curve_exponent": "GT7ENG_WIND_CURVE_EXPONENT",
+    "deadband_kph": "GT7ENG_WIND_DEADBAND_KPH",
+    "off_level": "GT7ENG_WIND_OFF_LEVEL",
+    "min_active_level": "GT7ENG_WIND_MIN_ACTIVE_LEVEL",
+    "max_level": "GT7ENG_WIND_MAX_LEVEL",
+    "smoothing_seconds": "GT7ENG_WIND_SMOOTHING_SECONDS",
+    "hysteresis_levels": "GT7ENG_WIND_HYSTERESIS_LEVELS",
+    "timeout_seconds": "GT7ENG_WIND_TIMEOUT_SECONDS",
 }
 
 
@@ -191,6 +207,79 @@ def _apply_pixel_payload(pixel: PixelDisplayConfig, payload: dict[str, Any]) -> 
     return updates
 
 
+def _apply_wind_payload(wind: WindConfig, payload: dict[str, Any]) -> dict[str, Any]:
+    updates: dict[str, Any] = {}
+
+    def set_value(name: str, value: Any) -> None:
+        setattr(wind, name, value)
+        updates[WIND_ENV_KEYS[name]] = value
+
+    if "ha_token" in payload:
+        raise ValueError("ha_token must be configured in .env, not through the HUD")
+    if "enabled" in payload:
+        set_value("enabled", _bool_value(payload["enabled"], "enabled"))
+    if "ha_base_url" in payload:
+        set_value("ha_base_url", str(payload["ha_base_url"]).strip().rstrip("/"))
+    if "ha_entity_id" in payload:
+        entity_id = str(payload["ha_entity_id"]).strip()
+        if not entity_id:
+            raise ValueError("ha_entity_id is required")
+        set_value("ha_entity_id", entity_id)
+    if "update_hz" in payload:
+        set_value("update_hz", _float_range_value(payload["update_hz"], "update_hz", 0.1, 10.0))
+    if "max_speed_kph" in payload:
+        set_value("max_speed_kph", _float_range_value(payload["max_speed_kph"], "max_speed_kph", 1.0, 600.0))
+    if "curve_exponent" in payload:
+        set_value("curve_exponent", _float_range_value(payload["curve_exponent"], "curve_exponent", 0.1, 5.0))
+    if "deadband_kph" in payload:
+        set_value("deadband_kph", _float_range_value(payload["deadband_kph"], "deadband_kph", 0.0, 100.0))
+    min_active_payload_key = (
+        "min_active_level"
+        if "min_active_level" in payload
+        else "min_level"
+        if "min_level" in payload
+        else None
+    )
+    next_off_level = (
+        _int_range_value(payload["off_level"], "off_level", 0, 100)
+        if "off_level" in payload
+        else wind.off_level
+    )
+    next_min_active_level = (
+        _int_range_value(
+            payload[min_active_payload_key],
+            "min_active_level",
+            0,
+            100,
+        )
+        if min_active_payload_key is not None
+        else wind.min_active_level
+    )
+    next_max_level = (
+        _int_range_value(payload["max_level"], "max_level", 0, 100)
+        if "max_level" in payload
+        else wind.max_level
+    )
+    if next_max_level < next_min_active_level:
+        raise ValueError("max_level must be greater than or equal to min_active_level")
+    if next_max_level < next_off_level:
+        raise ValueError("max_level must be greater than or equal to off_level")
+    if "off_level" in payload:
+        set_value("off_level", next_off_level)
+    if min_active_payload_key is not None:
+        set_value("min_active_level", next_min_active_level)
+    if "max_level" in payload:
+        set_value("max_level", next_max_level)
+    if "smoothing_seconds" in payload:
+        set_value("smoothing_seconds", _float_range_value(payload["smoothing_seconds"], "smoothing_seconds", 0.0, 10.0))
+    if "hysteresis_levels" in payload:
+        set_value("hysteresis_levels", _int_range_value(payload["hysteresis_levels"], "hysteresis_levels", 0, 100))
+    if "timeout_seconds" in payload:
+        set_value("timeout_seconds", _float_range_value(payload["timeout_seconds"], "timeout_seconds", 0.1, 30.0))
+
+    return updates
+
+
 def create_app(
     config: AppConfig | None = None,
     *,
@@ -311,6 +400,7 @@ def create_app(
     @app.on_event("startup")
     async def startup() -> None:
         await service.start_pixel_display()
+        await service.start_wind()
         if telemetry_mode == "live":
             await service.start_source(GTTelemTelemetrySource(app_config))
         elif telemetry_mode == "replay" and replay_file:
@@ -320,6 +410,7 @@ def create_app(
     async def shutdown() -> None:
         await service.stop_source()
         await service.stop_pixel_display()
+        await service.stop_wind()
         service.stop_capture()
 
     @app.get("/", response_class=HTMLResponse)
@@ -448,6 +539,37 @@ def create_app(
         app_config.pixel_display.enabled = False
         root_env.update({"GT7ENG_PIXEL_DISPLAY_ENABLED": False})
         await service.stop_pixel_display()
+        return {"ok": True, "status": status_payload(request)}
+
+    @app.patch("/api/control/wind")
+    async def control_wind(request: Request, payload: dict[str, Any]) -> dict[str, Any]:
+        require_local_control(request)
+        try:
+            updates = _apply_wind_payload(app_config.wind, payload)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+        if updates:
+            root_env.update(updates)
+        await service.reconfigure_wind()
+        if app_config.wind.enabled:
+            await service.start_wind()
+        return {"ok": True, "status": status_payload(request)}
+
+    @app.post("/api/control/wind/start")
+    async def control_wind_start(request: Request) -> dict[str, Any]:
+        require_local_control(request)
+        app_config.wind.enabled = True
+        root_env.update({"GT7ENG_WIND_ENABLED": True})
+        await service.start_wind()
+        return {"ok": True, "status": status_payload(request)}
+
+    @app.post("/api/control/wind/stop")
+    async def control_wind_stop(request: Request) -> dict[str, Any]:
+        require_local_control(request)
+        app_config.wind.enabled = False
+        root_env.update({"GT7ENG_WIND_ENABLED": False})
+        await service.stop_wind()
         return {"ok": True, "status": status_payload(request)}
 
     @app.post("/api/control/discord-bridge/start")

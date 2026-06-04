@@ -143,6 +143,7 @@ def _doctor(config: AppConfig, *, skip_ps: bool) -> int:
         f"package={'ok' if importlib.util.find_spec('faster_whisper') else 'missing'}"
     )
     pixel_ok = _doctor_pixel_display(config)
+    wind_ok = _doctor_wind(config)
 
     if not skip_ps and checks["gt-telem"]:
         try:
@@ -158,7 +159,7 @@ def _doctor(config: AppConfig, *, skip_ps: bool) -> int:
     elif config.ps_ip:
         print(f"ps5        manual fallback configured: {config.ps_ip}")
 
-    return 0 if all(checks.values()) and pixel_ok else 1
+    return 0 if all(checks.values()) and pixel_ok and wind_ok else 1
 
 
 def _udp_bind_ok(port: int) -> bool:
@@ -233,6 +234,35 @@ def _doctor_pixel_display(config: AppConfig) -> bool:
         f"theme={pixel.color_theme} layout={pixel.gear_layout} rev={pixel.rev_position} "
         f"scale={pixel.rev_scale} shift={pixel.shift_mode} "
         f"fuel={'on' if pixel.fuel_enabled else 'off'}"
+    )
+    return True
+
+
+def _doctor_wind(config: AppConfig) -> bool:
+    wind = config.wind
+    if not wind.enabled:
+        print(
+            f"wind       disabled entity={wind.ha_entity_id} "
+            f"off={wind.off_level} active={wind.min_active_level}-{wind.max_level} "
+            f"update_hz={wind.update_hz:g}"
+        )
+        return True
+
+    missing = []
+    if not wind.ha_base_url:
+        missing.append("base_url")
+    if not wind.ha_token:
+        missing.append("token")
+    if not wind.ha_entity_id:
+        missing.append("entity_id")
+    if missing:
+        print(f"wind       enabled missing={','.join(missing)}")
+        return False
+
+    print(
+        f"wind       enabled base_url={wind.ha_base_url} entity={wind.ha_entity_id} "
+        f"off={wind.off_level} active={wind.min_active_level}-{wind.max_level} "
+        f"update_hz={wind.update_hz:g}"
     )
     return True
 
