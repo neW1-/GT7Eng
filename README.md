@@ -154,7 +154,7 @@ GT7ENG_PIXEL_DISPLAY_FUEL_ENABLED=false
 
 Gear layouts are `current` for the main gear only and `current_suggested` to add GT7's smaller suggested gear on the right. Display sizing defaults to `auto`, which trusts the BLE-reported matrix size; `WIDTH` and `HEIGHT` are fallback values unless `GT7ENG_PIXEL_DISPLAY_SIZE_SOURCE=config` is set.
 
-Color themes are `simdt_blue`, `warm_amber`, `race_gyr`, and `custom`. For long night stints, switch to amber with:
+Color themes are `simdt_blue`, `warm_amber`, `race_gyr`, `arcade_neon`, `pit_lane_white`, `night_vision`, `gulf_classic`, `ice_rally`, `le_mans_purple`, `monaco_signal`, `sakura_sprint`, `lime_attack`, `carbon_red`, `fuji_sunset`, and `custom`. For long night stints, switch to amber with:
 
 ```bash
 GT7ENG_PIXEL_DISPLAY_COLOR_THEME=warm_amber

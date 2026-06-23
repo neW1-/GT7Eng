@@ -10,6 +10,7 @@ from gt7eng.cli import _pixel_preview
 from gt7eng.cli import _doctor_pixel_display
 from gt7eng.models import RaceSnapshot
 from gt7eng.pixel_display import PixelDisplayManager, PixelDisplayRenderer, palette_from_config
+from gt7eng.pixel_themes import PIXEL_COLOR_THEMES, PREBUILT_PIXEL_THEMES
 
 
 def racing_snapshot(**overrides) -> RaceSnapshot:
@@ -95,6 +96,69 @@ def test_renderer_uses_warm_amber_theme():
         frame.pixel(x, y) == renderer.palette.gear
         for y in range(frame.height)
         for x in range(frame.width)
+    )
+
+
+def test_all_prebuilt_pixel_themes_are_complete_and_render():
+    required_keys = {
+        "gear",
+        "rev_low",
+        "rev_mid",
+        "rev_high",
+        "shift",
+        "fuel_safe",
+        "fuel_warn",
+        "fuel_danger",
+        "fuel_critical",
+    }
+
+    allowed_keys = required_keys | {"suggested_gear"}
+
+    assert len(PREBUILT_PIXEL_THEMES) >= 13
+    assert PIXEL_COLOR_THEMES == (*PREBUILT_PIXEL_THEMES.keys(), "custom")
+    for theme, colors in PREBUILT_PIXEL_THEMES.items():
+        assert required_keys <= set(colors) <= allowed_keys
+        assert all(len(value) == 6 for value in colors.values())
+
+        renderer = PixelDisplayRenderer(
+            PixelDisplayConfig(color_theme=theme, fuel_enabled=True)
+        )
+        frame = renderer.render_snapshot(racing_snapshot(fuel_level=75.0))
+
+        assert frame.pixel(0, 0) == renderer.palette.fuel_safe
+        assert non_black_pixels(frame) > 200
+
+
+def test_user_tuned_themes_keep_expected_red_bias():
+    def red_dominant(hex_color: str) -> bool:
+        red = int(hex_color[0:2], 16)
+        green = int(hex_color[2:4], 16)
+        blue = int(hex_color[4:6], 16)
+        return red > green and red > blue
+
+    assert PREBUILT_PIXEL_THEMES["night_vision"]["shift"] == "ff2d2d"
+    assert PREBUILT_PIXEL_THEMES["night_vision"]["rev_mid"] == "ff9f1c"
+    assert PREBUILT_PIXEL_THEMES["night_vision"]["rev_high"] == PREBUILT_PIXEL_THEMES["night_vision"]["shift"]
+    for theme in ("carbon_red", "fuji_sunset"):
+        for key in ("gear", "rev_low", "rev_mid", "rev_high", "shift", "fuel_safe"):
+            assert red_dominant(PREBUILT_PIXEL_THEMES[theme][key])
+
+
+def test_gulf_classic_uses_orange_suggested_gear_and_shift_flash():
+    renderer = PixelDisplayRenderer(
+        PixelDisplayConfig(color_theme="gulf_classic", gear_layout="current_suggested")
+    )
+
+    frame = renderer.render_snapshot(
+        racing_snapshot(current_gear=4, suggested_gear=3, rev_limit=False)
+    )
+
+    assert renderer.palette.suggested_gear == (255, 107, 53)
+    assert renderer.palette.shift == (255, 107, 53)
+    assert any(
+        frame.pixel(x, y) == renderer.palette.suggested_gear
+        for y in range(frame.height)
+        for x in range(44, frame.width)
     )
 
 

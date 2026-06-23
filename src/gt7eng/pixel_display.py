@@ -13,47 +13,14 @@ from typing import Callable, Protocol
 
 from .config import PixelDisplayConfig
 from .models import RaceSnapshot
+from .pixel_themes import PREBUILT_PIXEL_THEMES
 
 logger = logging.getLogger(__name__)
 
 Color = tuple[int, int, int]
 
 
-THEMES: dict[str, dict[str, str]] = {
-    "simdt_blue": {
-        "gear": "31d7ff",
-        "rev_low": "26d8ff",
-        "rev_mid": "ff96f0",
-        "rev_high": "ff3d86",
-        "shift": "ff4aa8",
-        "fuel_safe": "26d8ff",
-        "fuel_warn": "ff96f0",
-        "fuel_danger": "ff3d86",
-        "fuel_critical": "ff2d2d",
-    },
-    "warm_amber": {
-        "gear": "ff8a24",
-        "rev_low": "ff9f2e",
-        "rev_mid": "ff5f1a",
-        "rev_high": "c51616",
-        "shift": "ff2400",
-        "fuel_safe": "ffb347",
-        "fuel_warn": "ff8a24",
-        "fuel_danger": "ff4b1f",
-        "fuel_critical": "c51616",
-    },
-    "race_gyr": {
-        "gear": "f5f8ff",
-        "rev_low": "00d36f",
-        "rev_mid": "ffd21f",
-        "rev_high": "ff2d2d",
-        "shift": "ff2d2d",
-        "fuel_safe": "00d36f",
-        "fuel_warn": "ffd21f",
-        "fuel_danger": "ff7a1f",
-        "fuel_critical": "ff2d2d",
-    },
-}
+THEMES = PREBUILT_PIXEL_THEMES
 
 
 GLYPHS: dict[str, list[str]] = {
@@ -94,6 +61,7 @@ class PixelFrame:
 @dataclass(slots=True)
 class PixelPalette:
     gear: Color
+    suggested_gear: Color
     rev_low: Color
     rev_mid: Color
     rev_high: Color
@@ -343,12 +311,11 @@ class PixelDisplayRenderer:
         )
         if suggested_label is None:
             return
-        suggested_color = _scale_color(self.palette.gear, 0.45)
         suggested_max_scale = max(1, min(main_scale - 1, round(main_scale * 0.75)))
         self._draw_label_in_area(
             pixels,
             suggested_label,
-            suggested_color,
+            self.palette.suggested_gear,
             min(self.width - 1, split + 1),
             self.width - 1,
             max_scale=suggested_max_scale,
@@ -659,8 +626,15 @@ def palette_from_config(config: PixelDisplayConfig) -> PixelPalette:
     for key, value in fuel_overrides.items():
         if value:
             values[key] = value
+    gear = _hex_to_rgb(values["gear"])
+    suggested_gear = (
+        _hex_to_rgb(values["suggested_gear"])
+        if values.get("suggested_gear")
+        else _scale_color(gear, 0.45)
+    )
     return PixelPalette(
-        gear=_hex_to_rgb(values["gear"]),
+        gear=gear,
+        suggested_gear=suggested_gear,
         rev_low=_hex_to_rgb(values["rev_low"]),
         rev_mid=_hex_to_rgb(values["rev_mid"]),
         rev_high=_hex_to_rgb(values["rev_high"]),

@@ -3,7 +3,14 @@ import tempfile
 from pathlib import Path
 from typing import Any
 
-from .config import DEFAULT_VERBOSITY, PRESETS, AppConfig, PixelDisplayConfig, WindConfig
+from .config import (
+    DEFAULT_VERBOSITY,
+    PIXEL_COLOR_THEMES,
+    PRESETS,
+    AppConfig,
+    PixelDisplayConfig,
+    WindConfig,
+)
 from .control import DiscordBridgeManager, EnvFile, is_local_host
 from .models import RaceSnapshot
 from .pixel_display import PixelDisplayRenderer
@@ -183,7 +190,7 @@ def _apply_pixel_payload(pixel: PixelDisplayConfig, payload: dict[str, Any]) -> 
     if "flash_hz" in payload:
         set_value("flash_hz", _float_range_value(payload["flash_hz"], "flash_hz", 1.0, 20.0))
     if "color_theme" in payload:
-        set_value("color_theme", _enum_value(payload["color_theme"], ["simdt_blue", "warm_amber", "race_gyr", "custom"], "color_theme"))
+        set_value("color_theme", _enum_value(payload["color_theme"], list(PIXEL_COLOR_THEMES), "color_theme"))
     for color_name in [
         "gear_color",
         "rev_low_color",
@@ -375,7 +382,7 @@ def create_app(
                 "gear_layouts": ["current", "current_suggested"],
                 "rev_scales": ["wide", "alert_window"],
                 "shift_modes": ["rev_limit", "percent"],
-                "color_themes": ["simdt_blue", "warm_amber", "race_gyr", "custom"],
+                "color_themes": list(PIXEL_COLOR_THEMES),
             },
         }
 

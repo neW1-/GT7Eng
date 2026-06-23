@@ -9,7 +9,7 @@ import socket
 import sys
 from pathlib import Path
 
-from .config import AppConfig, load_env_file
+from .config import AppConfig, PIXEL_COLOR_THEMES, load_env_file
 from .models import RaceSnapshot
 from .pixel_display import PixelDisplayRenderer
 from .server import run_server
@@ -60,7 +60,7 @@ def main(argv: list[str] | None = None) -> int:
     preview_parser.add_argument("--height", type=int, default=64)
     preview_parser.add_argument(
         "--theme",
-        choices=["simdt_blue", "warm_amber", "race_gyr", "custom"],
+        choices=list(PIXEL_COLOR_THEMES),
     )
     preview_parser.add_argument("--rev-position", choices=["top", "bottom"])
 

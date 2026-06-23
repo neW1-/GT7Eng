@@ -2,7 +2,7 @@ from pathlib import Path
 
 from fastapi.testclient import TestClient
 
-from gt7eng.config import AppConfig
+from gt7eng.config import AppConfig, PIXEL_COLOR_THEMES
 from gt7eng.server import create_app
 
 
@@ -39,6 +39,8 @@ def test_status_reports_audio_engines():
     assert payload["config"]["pixel_display"]["rev_scale"] == "wide"
     assert payload["config"]["pixel_display"]["shift_mode"] == "rev_limit"
     assert payload["config"]["pixel_display"]["fuel_enabled"] is False
+    assert payload["options"]["pixel"]["color_themes"] == list(PIXEL_COLOR_THEMES)
+    assert len(payload["options"]["pixel"]["color_themes"]) >= 14
     assert payload["pixel_display"]["rev"]["percent"] == 0.0
     assert payload["pixel_display"]["fuel"]["enabled"] is False
     assert payload["pixel_display"]["fuel"]["visible"] is False

@@ -5,6 +5,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Literal
 
+from .pixel_themes import PIXEL_COLOR_THEMES, PixelColorTheme
+
 AlertCategory = Literal[
     "fuel",
     "pit",
@@ -20,7 +22,6 @@ AlertCategory = Literal[
 Verbosity = Literal["off", "critical", "balanced", "detailed"]
 VoiceMode = Literal["wake_phrase", "quiet_driver", "quiet_driver_ai"]
 PixelRevPosition = Literal["top", "bottom"]
-PixelColorTheme = Literal["simdt_blue", "warm_amber", "race_gyr", "custom"]
 PixelRevScale = Literal["wide", "alert_window"]
 PixelShiftMode = Literal["rev_limit", "percent"]
 PixelGearLayout = Literal["current", "current_suggested"]
@@ -414,7 +415,7 @@ def _rev_position(value: str) -> PixelRevPosition:
 
 def _color_theme(value: str) -> PixelColorTheme:
     normalized = value.strip().lower()
-    if normalized in {"warm_amber", "race_gyr", "custom"}:
+    if normalized in PIXEL_COLOR_THEMES:
         return normalized  # type: ignore[return-value]
     return "simdt_blue"
 
