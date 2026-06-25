@@ -172,7 +172,8 @@ class SecondDisplayRenderer:
             self._draw_fuel_page(pixels, snapshot, label)
             return True
         if alert.category == "incident":
-            self._draw_center_text(pixels, "SPIN", self.palette.alert)
+            label = "SPIN" if "spin" in alert.message.lower() else "HIT"
+            self._draw_center_text(pixels, label, self.palette.alert)
             return True
         if alert.category == "system":
             self._draw_center_text(pixels, "STALE", self.palette.alert)

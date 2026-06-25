@@ -184,7 +184,7 @@ def test_second_display_control_persists_runtime_config_and_preview(tmp_path):
             "enabled": False,
             "address": "coach-device",
             "brightness": 44,
-            "color_theme": "purple",
+            "color_theme": "warm_amber",
             "alert_hold_seconds": 3.5,
             "flash_hold_seconds": 1.2,
             "active_color": "#ffee00",

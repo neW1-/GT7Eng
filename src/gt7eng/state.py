@@ -798,8 +798,6 @@ def _pit_service_reason(
     if radius_reset:
         return "tire_radius_reset"
     return None
-
-
 def _fuel_percent(value: float | None) -> float | None:
     if value is None:
         return None

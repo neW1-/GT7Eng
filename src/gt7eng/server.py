@@ -605,11 +605,14 @@ def create_app(
 
         if updates:
             if "GT7ENG_PIXEL_DISPLAY_COLOR_THEME" in updates:
+                app_config.second_display.color_theme = app_config.pixel_display.color_theme
                 updates["GT7ENG_SECOND_DISPLAY_COLOR_THEME"] = (
                     app_config.pixel_display.color_theme
                 )
             root_env.update(updates)
         await service.reconfigure_pixel_display()
+        if "GT7ENG_PIXEL_DISPLAY_COLOR_THEME" in updates:
+            await service.reconfigure_second_display()
         if app_config.pixel_display.enabled:
             await service.start_pixel_display()
         return {"ok": True, "status": status_payload(request)}
