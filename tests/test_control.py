@@ -76,6 +76,8 @@ def test_control_endpoints_reject_non_local_clients(tmp_path):
     assert response.status_code == 403
     response = client.patch("/api/control/wind", json={"enabled": True})
     assert response.status_code == 403
+    response = client.patch("/api/control/second-display", json={"enabled": True})
+    assert response.status_code == 403
 
 
 def test_stt_control_persists_python_and_discord_settings(tmp_path):
@@ -133,12 +135,53 @@ def test_pixel_control_persists_runtime_config_and_preview(tmp_path):
     assert pixel["gear_layout"] == "current_suggested"
     assert pixel["fuel_enabled"] is True
     assert pixel["fuel_warn_color"] == "ffee00"
+    assert response.json()["status"]["config"]["second_display"]["color_theme"] == "warm_amber"
     values = EnvFile(tmp_path / ".env").read_values()
     assert values["GT7ENG_PIXEL_DISPLAY_ADDRESS"] == "device-uuid"
     assert values["GT7ENG_PIXEL_DISPLAY_BRIGHTNESS"] == "42"
     assert values["GT7ENG_PIXEL_DISPLAY_FUEL_WARN_COLOR"] == "ffee00"
+    assert values["GT7ENG_SECOND_DISPLAY_COLOR_THEME"] == "warm_amber"
 
     preview = client.get("/api/control/pixel-display/preview.png")
+
+    assert preview.status_code == 200
+    assert preview.content.startswith(b"\x89PNG")
+
+
+def test_second_display_control_persists_runtime_config_and_preview(tmp_path):
+    app = create_app(AppConfig(), telemetry_mode="none", project_root=tmp_path)
+    client = TestClient(app)
+
+    response = client.patch(
+        "/api/control/second-display",
+        json={
+            "enabled": False,
+            "address": "coach-device",
+            "brightness": 44,
+            "color_theme": "warm_amber",
+            "alert_hold_seconds": 3.5,
+            "flash_hold_seconds": 1.2,
+            "active_color": "#ffee00",
+            "tire_hot_color": "#ff0000",
+        },
+    )
+
+    assert response.status_code == 200
+    display = response.json()["status"]["config"]["second_display"]
+    assert display["address"] == "coach-device"
+    assert display["brightness"] == 44
+    assert display["color_theme"] == "simdt_blue"
+    assert display["alert_hold_seconds"] == 3.5
+    assert display["flash_hold_seconds"] == 1.2
+    assert display["active_color"] == "ffee00"
+    assert display["tire_hot_color"] == "ff0000"
+    values = EnvFile(tmp_path / ".env").read_values()
+    assert values["GT7ENG_SECOND_DISPLAY_ADDRESS"] == "coach-device"
+    assert values["GT7ENG_SECOND_DISPLAY_BRIGHTNESS"] == "44"
+    assert values["GT7ENG_SECOND_DISPLAY_COLOR_THEME"] == "simdt_blue"
+    assert values["GT7ENG_SECOND_DISPLAY_ACTIVE_COLOR"] == "ffee00"
+
+    preview = client.get("/api/control/second-display/preview.png")
 
     assert preview.status_code == 200
     assert preview.content.startswith(b"\x89PNG")

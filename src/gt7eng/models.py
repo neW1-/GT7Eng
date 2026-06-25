@@ -221,6 +221,7 @@ class LapRecord:
     lap_time_ms: int | None
     fuel_used: float | None
     completed_at: float
+    driving_style: DrivingStyleStats = field(default_factory=DrivingStyleStats)
 
     @property
     def lap_time(self) -> str:
@@ -272,6 +273,8 @@ class RaceSnapshot:
     asm_active: bool = False
     hand_brake_active: bool = False
     rev_limit: bool = False
+    wheelspin_active: bool = False
+    lockup_active: bool = False
     incident_status: str | None = None
     driving_style: DrivingStyleStats = field(default_factory=DrivingStyleStats)
     lap_history: list[LapRecord] = field(default_factory=list)

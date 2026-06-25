@@ -147,6 +147,30 @@ class PixelDisplayConfig:
 
 
 @dataclass(slots=True)
+class SecondDisplayConfig:
+    enabled: bool = False
+    address: str = ""
+    update_hz: float = 10.0
+    brightness: int = 60
+    dim_brightness: int = 12
+    orientation: int = 0
+    width: int = 64
+    height: int = 64
+    size_source: PixelSizeSource = "auto"
+    alert_hold_seconds: float = 4.0
+    flash_hold_seconds: float = 1.5
+    color_theme: PixelColorTheme = "simdt_blue"
+    label_color: str = ""
+    count_color: str = ""
+    active_color: str = ""
+    alert_color: str = ""
+    dim_color: str = ""
+    tire_normal_color: str = ""
+    tire_warm_color: str = ""
+    tire_hot_color: str = ""
+
+
+@dataclass(slots=True)
 class WindConfig:
     enabled: bool = False
     ha_base_url: str = ""
@@ -185,6 +209,7 @@ class AppConfig:
     stt: STTConfig = field(default_factory=STTConfig)
     tts: TTSConfig = field(default_factory=TTSConfig)
     pixel_display: PixelDisplayConfig = field(default_factory=PixelDisplayConfig)
+    second_display: SecondDisplayConfig = field(default_factory=SecondDisplayConfig)
     wind: WindConfig = field(default_factory=WindConfig)
 
     @classmethod
@@ -330,6 +355,70 @@ class AppConfig:
                 ),
                 rpm_min=_float_or_none(os.getenv("GT7ENG_PIXEL_DISPLAY_RPM_MIN")),
                 rpm_max=_float_or_none(os.getenv("GT7ENG_PIXEL_DISPLAY_RPM_MAX")),
+            ),
+            second_display=SecondDisplayConfig(
+                enabled=_bool(os.getenv("GT7ENG_SECOND_DISPLAY_ENABLED"), False),
+                address=os.getenv("GT7ENG_SECOND_DISPLAY_ADDRESS", "").strip(),
+                update_hz=_float_range(
+                    os.getenv("GT7ENG_SECOND_DISPLAY_UPDATE_HZ"), 10.0, 1.0, 30.0
+                ),
+                brightness=_int_range(
+                    os.getenv("GT7ENG_SECOND_DISPLAY_BRIGHTNESS"), 60, 0, 100
+                ),
+                dim_brightness=_int_range(
+                    os.getenv("GT7ENG_SECOND_DISPLAY_DIM_BRIGHTNESS"), 12, 0, 100
+                ),
+                orientation=_int_range(
+                    os.getenv("GT7ENG_SECOND_DISPLAY_ORIENTATION"), 0, 0, 3
+                ),
+                width=_int_range(
+                    os.getenv("GT7ENG_SECOND_DISPLAY_WIDTH"), 64, 8, 512
+                ),
+                height=_int_range(
+                    os.getenv("GT7ENG_SECOND_DISPLAY_HEIGHT"), 64, 8, 512
+                ),
+                size_source=_size_source(
+                    os.getenv("GT7ENG_SECOND_DISPLAY_SIZE_SOURCE", "auto")
+                ),
+                alert_hold_seconds=_float_range(
+                    os.getenv("GT7ENG_SECOND_DISPLAY_ALERT_HOLD_SECONDS"),
+                    4.0,
+                    0.5,
+                    30.0,
+                ),
+                flash_hold_seconds=_float_range(
+                    os.getenv("GT7ENG_SECOND_DISPLAY_FLASH_HOLD_SECONDS"),
+                    1.5,
+                    0.1,
+                    10.0,
+                ),
+                color_theme=_color_theme(
+                    os.getenv("GT7ENG_SECOND_DISPLAY_COLOR_THEME", "simdt_blue")
+                ),
+                label_color=_hex_color_or_empty(
+                    os.getenv("GT7ENG_SECOND_DISPLAY_LABEL_COLOR")
+                ),
+                count_color=_hex_color_or_empty(
+                    os.getenv("GT7ENG_SECOND_DISPLAY_COUNT_COLOR")
+                ),
+                active_color=_hex_color_or_empty(
+                    os.getenv("GT7ENG_SECOND_DISPLAY_ACTIVE_COLOR")
+                ),
+                alert_color=_hex_color_or_empty(
+                    os.getenv("GT7ENG_SECOND_DISPLAY_ALERT_COLOR")
+                ),
+                dim_color=_hex_color_or_empty(
+                    os.getenv("GT7ENG_SECOND_DISPLAY_DIM_COLOR")
+                ),
+                tire_normal_color=_hex_color_or_empty(
+                    os.getenv("GT7ENG_SECOND_DISPLAY_TIRE_NORMAL_COLOR")
+                ),
+                tire_warm_color=_hex_color_or_empty(
+                    os.getenv("GT7ENG_SECOND_DISPLAY_TIRE_WARM_COLOR")
+                ),
+                tire_hot_color=_hex_color_or_empty(
+                    os.getenv("GT7ENG_SECOND_DISPLAY_TIRE_HOT_COLOR")
+                ),
             ),
             wind=WindConfig(
                 enabled=_bool(os.getenv("GT7ENG_WIND_ENABLED"), False),

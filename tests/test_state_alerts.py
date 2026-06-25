@@ -785,6 +785,68 @@ def test_practice_driving_style_alerts_on_lap_end():
     assert any("Wheelspin" in alert.message for alert in alerts)
 
 
+def test_snapshot_includes_live_wheelspin_and_lockup_flags():
+    service = RaceEngineerService(AppConfig())
+
+    service.update_frame(
+        synthetic_frame(
+            timestamp=1.0,
+            throttle=90,
+            brake=0,
+            speed_kph=80.0,
+            wheel_rps={"fl": 20, "fr": 20, "rl": 26, "rr": 26},
+        )
+    )
+
+    assert service.snapshot.wheelspin_active is True
+    assert service.snapshot.lockup_active is False
+    assert service.snapshot.driving_style.wheelspin_events == 1
+
+    service.update_frame(
+        synthetic_frame(
+            timestamp=2.0,
+            throttle=0,
+            brake=200,
+            speed_kph=80.0,
+            wheel_rps={"fl": 20, "fr": 20, "rl": 20, "rr": 5},
+        )
+    )
+
+    assert service.snapshot.wheelspin_active is False
+    assert service.snapshot.lockup_active is True
+    assert service.snapshot.driving_style.lockup_events == 1
+
+
+def test_completed_lap_includes_per_lap_tc_and_asm_counts():
+    service = RaceEngineerService(AppConfig())
+    service.update_frame(
+        synthetic_frame(timestamp=1.0, current_lap=1, tcs_active=True, asm_active=True)
+    )
+    service.update_frame(
+        synthetic_frame(timestamp=1.5, current_lap=1, tcs_active=False, asm_active=False)
+    )
+    service.update_frame(
+        synthetic_frame(timestamp=2.0, current_lap=1, tcs_active=True, asm_active=True)
+    )
+    service.update_frame(
+        synthetic_frame(
+            timestamp=3.0,
+            current_lap=2,
+            tcs_active=False,
+            asm_active=False,
+            last_lap_time_ms=98_000,
+            best_lap_time_ms=98_000,
+        )
+    )
+
+    lap = service.snapshot.lap_history[-1]
+    assert lap.lap_number == 1
+    assert lap.driving_style.tcs_events == 2
+    assert lap.driving_style.asm_events == 2
+    assert service.snapshot.driving_style.tcs_events == 2
+    assert service.snapshot.driving_style.asm_events == 2
+
+
 def test_snapshot_includes_gt_alert_rpm_range():
     service = RaceEngineerService(AppConfig())
 

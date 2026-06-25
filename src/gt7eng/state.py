@@ -22,6 +22,7 @@ class RaceState:
         self.frames: deque[TelemetryFrame] = deque(maxlen=config.max_frame_buffer)
         self.lap_history: list[LapRecord] = []
         self._lap_start_fuel: dict[int, float] = {}
+        self._lap_start_driving_style: dict[int, DrivingStyleStats] = {}
         self._last_snapshot: RaceSnapshot | None = None
         self._last_frame: TelemetryFrame | None = None
         self._first_frame_time: float | None = None
@@ -53,6 +54,11 @@ class RaceState:
         if self._new_session_started(frame, phase):
             self._reset_race_session()
         self._update_lifecycle(frame, phase)
+        if frame.current_lap is not None and frame.current_lap > 0:
+            self._lap_start_driving_style.setdefault(
+                frame.current_lap,
+                _copy_driving_style(self._driving_style),
+            )
 
         previous_snapshot = self._last_snapshot
         completed_lap = self._detect_completed_lap(frame)
@@ -106,6 +112,7 @@ class RaceState:
             lap_time_ms=frame.last_lap_time_ms,
             fuel_used=fuel_used,
             completed_at=frame.timestamp,
+            driving_style=self._lap_driving_style(last.current_lap),
         )
         self.lap_history.append(lap)
         return lap
@@ -201,6 +208,8 @@ class RaceState:
             asm_active=frame.asm_active,
             hand_brake_active=frame.hand_brake_active,
             rev_limit=frame.rev_limit,
+            wheelspin_active=self._wheelspin_active,
+            lockup_active=self._lockup_active,
             incident_status=incident_detected or self._last_incident,
             driving_style=DrivingStyleStats(
                 tcs_events=self._driving_style.tcs_events,
@@ -354,6 +363,7 @@ class RaceState:
     def _reset_race_session(self) -> None:
         self.lap_history.clear()
         self._lap_start_fuel.clear()
+        self._lap_start_driving_style.clear()
         self._tire_radius_baseline = None
         self._driving_style = DrivingStyleStats()
         self._last_tcs_active = False
@@ -418,6 +428,16 @@ class RaceState:
         self._wheelspin_active = wheelspin
         self._lockup_active = lockup
         return event
+
+    def _lap_driving_style(self, lap_number: int) -> DrivingStyleStats:
+        start = self._lap_start_driving_style.get(lap_number, DrivingStyleStats())
+        current = self._driving_style
+        return DrivingStyleStats(
+            tcs_events=max(0, current.tcs_events - start.tcs_events),
+            asm_events=max(0, current.asm_events - start.asm_events),
+            wheelspin_events=max(0, current.wheelspin_events - start.wheelspin_events),
+            lockup_events=max(0, current.lockup_events - start.lockup_events),
+        )
 
     def _likely_wheelspin(self, frame: TelemetryFrame) -> bool:
         if frame.throttle is None or frame.throttle < 60:
@@ -504,6 +524,15 @@ def _avg(values: list[float | None]) -> float | None:
     if not present:
         return None
     return sum(present) / len(present)
+
+
+def _copy_driving_style(stats: DrivingStyleStats) -> DrivingStyleStats:
+    return DrivingStyleStats(
+        tcs_events=stats.tcs_events,
+        asm_events=stats.asm_events,
+        wheelspin_events=stats.wheelspin_events,
+        lockup_events=stats.lockup_events,
+    )
 
 
 def _fuel_percent(value: float | None) -> float | None:

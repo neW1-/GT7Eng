@@ -6,6 +6,7 @@ const fields = {
   sttStatus: document.querySelector("#stt-status"),
   ttsStatus: document.querySelector("#tts-status"),
   pixelStatus: document.querySelector("#pixel-status"),
+  secondDisplayStatus: document.querySelector("#second-display-status"),
   windStatus: document.querySelector("#wind-status"),
   position: document.querySelector("#position"),
   lap: document.querySelector("#lap"),
@@ -69,6 +70,10 @@ const controls = {
   pixelStart: document.querySelector("#pixel-start"),
   pixelStop: document.querySelector("#pixel-stop"),
   pixelPreview: document.querySelector("#pixel-preview"),
+  secondDisplayForm: document.querySelector("#second-display-form"),
+  secondDisplayStart: document.querySelector("#second-display-start"),
+  secondDisplayStop: document.querySelector("#second-display-stop"),
+  secondDisplayPreview: document.querySelector("#second-display-preview"),
   windForm: document.querySelector("#wind-form"),
   windStart: document.querySelector("#wind-start"),
   windStop: document.querySelector("#wind-stop"),
@@ -104,6 +109,29 @@ const pixelFields = {
   fuel_critical_color: document.querySelector("#pixel-fuel-critical-control"),
   rpm_min: document.querySelector("#pixel-rpm-min-control"),
   rpm_max: document.querySelector("#pixel-rpm-max-control"),
+};
+
+const secondDisplayFields = {
+  enabled: document.querySelector("#second-display-enabled-control"),
+  address: document.querySelector("#second-display-address-control"),
+  color_theme: document.querySelector("#second-display-theme-control"),
+  brightness: document.querySelector("#second-display-brightness-control"),
+  dim_brightness: document.querySelector("#second-display-dim-control"),
+  orientation: document.querySelector("#second-display-orientation-control"),
+  update_hz: document.querySelector("#second-display-update-control"),
+  size_source: document.querySelector("#second-display-size-source-control"),
+  width: document.querySelector("#second-display-width-control"),
+  height: document.querySelector("#second-display-height-control"),
+  alert_hold_seconds: document.querySelector("#second-display-alert-hold-control"),
+  flash_hold_seconds: document.querySelector("#second-display-flash-hold-control"),
+  label_color: document.querySelector("#second-display-label-color-control"),
+  count_color: document.querySelector("#second-display-count-color-control"),
+  active_color: document.querySelector("#second-display-active-color-control"),
+  alert_color: document.querySelector("#second-display-alert-color-control"),
+  dim_color: document.querySelector("#second-display-dim-color-control"),
+  tire_normal_color: document.querySelector("#second-display-tire-normal-control"),
+  tire_warm_color: document.querySelector("#second-display-tire-warm-control"),
+  tire_hot_color: document.querySelector("#second-display-tire-hot-control"),
 };
 
 const windFields = {
@@ -200,6 +228,7 @@ function render(data, { forceControls = false } = {}) {
   fields.sttStatus.textContent = data.audio?.stt?.enabled ? "stt on" : "stt off";
   fields.ttsStatus.textContent = data.audio?.tts?.engine || data.config?.tts?.engine || "tts";
   renderPixelStatus(data);
+  renderSecondDisplayStatus(data);
   renderWindStatus(data);
   fields.position.textContent = snap.current_position ? `P${snap.current_position}` : "--";
   fields.lap.textContent = snap.current_lap
@@ -279,6 +308,22 @@ function renderPixelStatus(data) {
   }
 }
 
+function renderSecondDisplayStatus(data) {
+  const display = data.second_display || {};
+  const config = data.config?.second_display || {};
+  const enabled = Boolean(display.enabled || config.enabled);
+  if (!enabled) {
+    fields.secondDisplayStatus.textContent = "coach off";
+  } else if (display.connected) {
+    const size = display.device_width && display.device_height
+      ? ` ${display.device_width}x${display.device_height}`
+      : "";
+    fields.secondDisplayStatus.textContent = `coach live${size}`;
+  } else {
+    fields.secondDisplayStatus.textContent = display.last_error ? "coach warn" : "coach wait";
+  }
+}
+
 function renderVoiceDebug(data) {
   const voiceLast = data.voice?.last || {};
   const repair = voiceLast.repair || null;
@@ -346,11 +391,16 @@ function renderControls(data, { force = false } = {}) {
   for (const [name, element] of Object.entries(pixelFields)) {
     setValue(element, pixel[name]);
   }
+  const secondDisplay = config.second_display || {};
+  for (const [name, element] of Object.entries(secondDisplayFields)) {
+    setValue(element, secondDisplay[name]);
+  }
   const wind = config.wind || {};
   for (const [name, element] of Object.entries(windFields)) {
     setValue(element, wind[name]);
   }
   controls.pixelPreview.src = allowed ? `/api/control/pixel-display/preview.png?t=${Date.now()}` : "";
+  controls.secondDisplayPreview.src = allowed ? `/api/control/second-display/preview.png?t=${Date.now()}` : "";
 }
 
 function initializeControls(data) {
@@ -365,6 +415,8 @@ function initializeControls(data) {
   fillOptions(pixelFields.rev_position, options.pixel?.rev_positions || []);
   fillOptions(pixelFields.rev_scale, options.pixel?.rev_scales || []);
   fillOptions(pixelFields.shift_mode, options.pixel?.shift_modes || []);
+  fillOptions(secondDisplayFields.color_theme, options.second_display?.color_themes || []);
+  fillOptions(secondDisplayFields.size_source, options.second_display?.size_sources || []);
 
   controls.verbosityControls.replaceChildren(
     ...(options.verbosity_categories || []).map((category) => {
@@ -486,6 +538,11 @@ controls.pixelForm.addEventListener("submit", async (event) => {
   await saveControl("/api/control/pixel-display", readPixelPayload());
 });
 
+controls.secondDisplayForm.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  await saveControl("/api/control/second-display", readSecondDisplayPayload());
+});
+
 controls.windForm.addEventListener("submit", async (event) => {
   event.preventDefault();
   await saveControl("/api/control/wind", readWindPayload());
@@ -496,12 +553,22 @@ controls.bridgeStop.addEventListener("click", () => postControl("/api/control/di
 controls.bridgeRestart.addEventListener("click", () => postControl("/api/control/discord-bridge/restart"));
 controls.pixelStart.addEventListener("click", () => postControl("/api/control/pixel-display/start"));
 controls.pixelStop.addEventListener("click", () => postControl("/api/control/pixel-display/stop"));
+controls.secondDisplayStart.addEventListener("click", () => postControl("/api/control/second-display/start"));
+controls.secondDisplayStop.addEventListener("click", () => postControl("/api/control/second-display/stop"));
 controls.windStart.addEventListener("click", () => postControl("/api/control/wind/start"));
 controls.windStop.addEventListener("click", () => postControl("/api/control/wind/stop"));
 
 function readPixelPayload() {
   const payload = {};
   for (const [name, element] of Object.entries(pixelFields)) {
+    payload[name] = element.type === "checkbox" ? element.checked : element.value;
+  }
+  return payload;
+}
+
+function readSecondDisplayPayload() {
+  const payload = {};
+  for (const [name, element] of Object.entries(secondDisplayFields)) {
     payload[name] = element.type === "checkbox" ? element.checked : element.value;
   }
   return payload;

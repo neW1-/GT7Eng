@@ -11,6 +11,7 @@ from .config import AppConfig
 from .llm import IntentRepair, OpenAICompatibleClient
 from .models import Alert, RaceSnapshot, TelemetryFrame
 from .pixel_display import PixelDisplayManager
+from .second_display import SecondDisplayManager
 from .state import RaceState
 from .telemetry import CaptureWriter, TelemetrySource
 from .timefmt import format_spoken_delta
@@ -195,8 +196,13 @@ class RaceEngineerService:
         self._capture: CaptureWriter | None = None
         self._muted = config.engineer_muted
         self._last_voice_debug: dict = {}
+        self._sync_second_display_theme()
         self.pixel_display = PixelDisplayManager(
             config.pixel_display,
+            snapshot_provider=self.state.stale_snapshot,
+        )
+        self.second_display = SecondDisplayManager(
+            config.second_display,
             snapshot_provider=self.state.stale_snapshot,
         )
         self.wind = HomeAssistantWindManager(
@@ -216,6 +222,7 @@ class RaceEngineerService:
         if self._capture:
             self._capture.write(frame)
         self.pixel_display.publish(update.snapshot)
+        self.second_display.publish(update.snapshot)
         self.wind.publish(update.snapshot)
         self._append_alerts(alerts)
         return alerts
@@ -241,6 +248,20 @@ class RaceEngineerService:
 
     async def reconfigure_pixel_display(self) -> None:
         await self.pixel_display.reconfigure()
+        if self._sync_second_display_theme():
+            await self.second_display.reconfigure()
+
+    async def start_second_display(self) -> None:
+        if self._sync_second_display_theme():
+            await self.second_display.reconfigure()
+        await self.second_display.start()
+
+    async def stop_second_display(self) -> None:
+        await self.second_display.stop()
+
+    async def reconfigure_second_display(self) -> None:
+        self._sync_second_display_theme()
+        await self.second_display.reconfigure()
 
     async def start_wind(self) -> None:
         await self.wind.start()
@@ -420,6 +441,28 @@ class RaceEngineerService:
                     "rpm_min": self.config.pixel_display.rpm_min,
                     "rpm_max": self.config.pixel_display.rpm_max,
                 },
+                "second_display": {
+                    "enabled": self.config.second_display.enabled,
+                    "address": self.config.second_display.address,
+                    "update_hz": self.config.second_display.update_hz,
+                    "brightness": self.config.second_display.brightness,
+                    "dim_brightness": self.config.second_display.dim_brightness,
+                    "orientation": self.config.second_display.orientation,
+                    "width": self.config.second_display.width,
+                    "height": self.config.second_display.height,
+                    "size_source": self.config.second_display.size_source,
+                    "alert_hold_seconds": self.config.second_display.alert_hold_seconds,
+                    "flash_hold_seconds": self.config.second_display.flash_hold_seconds,
+                    "color_theme": self.config.second_display.color_theme,
+                    "label_color": self.config.second_display.label_color,
+                    "count_color": self.config.second_display.count_color,
+                    "active_color": self.config.second_display.active_color,
+                    "alert_color": self.config.second_display.alert_color,
+                    "dim_color": self.config.second_display.dim_color,
+                    "tire_normal_color": self.config.second_display.tire_normal_color,
+                    "tire_warm_color": self.config.second_display.tire_warm_color,
+                    "tire_hot_color": self.config.second_display.tire_hot_color,
+                },
                 "wind": {
                     "enabled": self.config.wind.enabled,
                     "ha_base_url": self.config.wind.ha_base_url,
@@ -437,6 +480,7 @@ class RaceEngineerService:
                 },
             },
             "pixel_display": self.pixel_display.status(),
+            "second_display": self.second_display.status(),
             "wind": self.wind.status(),
         }
 
@@ -469,6 +513,9 @@ class RaceEngineerService:
     def _append_alerts(self, alerts: list[Alert]) -> None:
         for alert in alerts:
             self.alert_log.append(alert)
+            self.second_display.publish_alert(alert)
+            if alert.category == "lap":
+                self._publish_lap_fuel_page()
             if alert.speak and (not self._muted or alert.priority == "critical"):
                 self.voice_jobs.append(
                     VoiceJob(
@@ -479,6 +526,31 @@ class RaceEngineerService:
                         category=alert.category,
                     )
                 )
+
+    def _publish_lap_fuel_page(self) -> None:
+        snapshot = self.state.snapshot
+        if not snapshot.lap_history:
+            return
+        last_lap = snapshot.lap_history[-1]
+        if snapshot.fuel_level is None and last_lap.fuel_used is None:
+            return
+        self.second_display.publish_alert(
+            Alert(
+                id=0,
+                timestamp=time.time(),
+                category="fuel_lap",  # type: ignore[arg-type]
+                priority="info",
+                message="Lap fuel usage.",
+                speak=False,
+            )
+        )
+
+    def _sync_second_display_theme(self) -> bool:
+        theme = self.config.pixel_display.color_theme
+        if self.config.second_display.color_theme == theme:
+            return False
+        self.config.second_display.color_theme = theme
+        return True
 
     def _apply_intent(self, result: VoiceResult) -> None:
         if result.intent == "keep_quiet":

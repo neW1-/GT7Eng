@@ -9,11 +9,13 @@ from .config import (
     PRESETS,
     AppConfig,
     PixelDisplayConfig,
+    SecondDisplayConfig,
     WindConfig,
 )
 from .control import DiscordBridgeManager, EnvFile, is_local_host
-from .models import RaceSnapshot
+from .models import DrivingStyleStats, RaceSnapshot
 from .pixel_display import PixelDisplayRenderer
+from .second_display import SecondDisplayRenderer
 from .service import RaceEngineerService
 from .stt import STTUnavailableError, create_stt
 from .telemetry import GTTelemTelemetrySource, ReplayTelemetrySource
@@ -61,6 +63,29 @@ PIXEL_ENV_KEYS = {
     "fuel_critical_color": "GT7ENG_PIXEL_DISPLAY_FUEL_CRITICAL_COLOR",
     "rpm_min": "GT7ENG_PIXEL_DISPLAY_RPM_MIN",
     "rpm_max": "GT7ENG_PIXEL_DISPLAY_RPM_MAX",
+}
+
+SECOND_DISPLAY_ENV_KEYS = {
+    "enabled": "GT7ENG_SECOND_DISPLAY_ENABLED",
+    "address": "GT7ENG_SECOND_DISPLAY_ADDRESS",
+    "update_hz": "GT7ENG_SECOND_DISPLAY_UPDATE_HZ",
+    "brightness": "GT7ENG_SECOND_DISPLAY_BRIGHTNESS",
+    "dim_brightness": "GT7ENG_SECOND_DISPLAY_DIM_BRIGHTNESS",
+    "orientation": "GT7ENG_SECOND_DISPLAY_ORIENTATION",
+    "size_source": "GT7ENG_SECOND_DISPLAY_SIZE_SOURCE",
+    "width": "GT7ENG_SECOND_DISPLAY_WIDTH",
+    "height": "GT7ENG_SECOND_DISPLAY_HEIGHT",
+    "alert_hold_seconds": "GT7ENG_SECOND_DISPLAY_ALERT_HOLD_SECONDS",
+    "flash_hold_seconds": "GT7ENG_SECOND_DISPLAY_FLASH_HOLD_SECONDS",
+    "color_theme": "GT7ENG_SECOND_DISPLAY_COLOR_THEME",
+    "label_color": "GT7ENG_SECOND_DISPLAY_LABEL_COLOR",
+    "count_color": "GT7ENG_SECOND_DISPLAY_COUNT_COLOR",
+    "active_color": "GT7ENG_SECOND_DISPLAY_ACTIVE_COLOR",
+    "alert_color": "GT7ENG_SECOND_DISPLAY_ALERT_COLOR",
+    "dim_color": "GT7ENG_SECOND_DISPLAY_DIM_COLOR",
+    "tire_normal_color": "GT7ENG_SECOND_DISPLAY_TIRE_NORMAL_COLOR",
+    "tire_warm_color": "GT7ENG_SECOND_DISPLAY_TIRE_WARM_COLOR",
+    "tire_hot_color": "GT7ENG_SECOND_DISPLAY_TIRE_HOT_COLOR",
 }
 
 WIND_ENV_KEYS = {
@@ -210,6 +235,56 @@ def _apply_pixel_payload(pixel: PixelDisplayConfig, payload: dict[str, Any]) -> 
         set_value("rpm_min", _optional_positive_float(payload["rpm_min"], "rpm_min"))
     if "rpm_max" in payload:
         set_value("rpm_max", _optional_positive_float(payload["rpm_max"], "rpm_max"))
+
+    return updates
+
+
+def _apply_second_display_payload(
+    display: SecondDisplayConfig,
+    payload: dict[str, Any],
+) -> dict[str, Any]:
+    updates: dict[str, Any] = {}
+
+    def set_value(name: str, value: Any) -> None:
+        setattr(display, name, value)
+        updates[SECOND_DISPLAY_ENV_KEYS[name]] = "" if value is None else value
+
+    if "enabled" in payload:
+        set_value("enabled", _bool_value(payload["enabled"], "enabled"))
+    if "address" in payload:
+        set_value("address", str(payload["address"]).strip())
+    if "update_hz" in payload:
+        set_value("update_hz", _float_range_value(payload["update_hz"], "update_hz", 1.0, 30.0))
+    if "brightness" in payload:
+        set_value("brightness", _int_range_value(payload["brightness"], "brightness", 0, 100))
+    if "dim_brightness" in payload:
+        set_value("dim_brightness", _int_range_value(payload["dim_brightness"], "dim_brightness", 0, 100))
+    if "orientation" in payload:
+        set_value("orientation", _int_range_value(payload["orientation"], "orientation", 0, 3))
+    if "size_source" in payload:
+        set_value("size_source", _enum_value(payload["size_source"], ["auto", "config"], "size_source"))
+    if "width" in payload:
+        set_value("width", _int_range_value(payload["width"], "width", 8, 512))
+    if "height" in payload:
+        set_value("height", _int_range_value(payload["height"], "height", 8, 512))
+    if "alert_hold_seconds" in payload:
+        set_value("alert_hold_seconds", _float_range_value(payload["alert_hold_seconds"], "alert_hold_seconds", 0.5, 30.0))
+    if "flash_hold_seconds" in payload:
+        set_value("flash_hold_seconds", _float_range_value(payload["flash_hold_seconds"], "flash_hold_seconds", 0.1, 10.0))
+    if "color_theme" in payload:
+        set_value("color_theme", _enum_value(payload["color_theme"], list(PIXEL_COLOR_THEMES), "color_theme"))
+    for color_name in [
+        "label_color",
+        "count_color",
+        "active_color",
+        "alert_color",
+        "dim_color",
+        "tire_normal_color",
+        "tire_warm_color",
+        "tire_hot_color",
+    ]:
+        if color_name in payload:
+            set_value(color_name, _hex_color_value(payload[color_name], color_name))
 
     return updates
 
@@ -384,6 +459,10 @@ def create_app(
                 "shift_modes": ["rev_limit", "percent"],
                 "color_themes": list(PIXEL_COLOR_THEMES),
             },
+            "second_display": {
+                "size_sources": ["auto", "config"],
+                "color_themes": list(PIXEL_COLOR_THEMES),
+            },
         }
 
     def status_payload(request: Request) -> dict[str, Any]:
@@ -407,6 +486,7 @@ def create_app(
     @app.on_event("startup")
     async def startup() -> None:
         await service.start_pixel_display()
+        await service.start_second_display()
         await service.start_wind()
         if telemetry_mode == "live":
             await service.start_source(GTTelemTelemetrySource(app_config))
@@ -417,6 +497,7 @@ def create_app(
     async def shutdown() -> None:
         await service.stop_source()
         await service.stop_pixel_display()
+        await service.stop_second_display()
         await service.stop_wind()
         service.stop_capture()
 
@@ -526,6 +607,11 @@ def create_app(
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 
         if updates:
+            if "GT7ENG_PIXEL_DISPLAY_COLOR_THEME" in updates:
+                app_config.second_display.color_theme = app_config.pixel_display.color_theme
+                updates["GT7ENG_SECOND_DISPLAY_COLOR_THEME"] = (
+                    app_config.pixel_display.color_theme
+                )
             root_env.update(updates)
         await service.reconfigure_pixel_display()
         if app_config.pixel_display.enabled:
@@ -546,6 +632,39 @@ def create_app(
         app_config.pixel_display.enabled = False
         root_env.update({"GT7ENG_PIXEL_DISPLAY_ENABLED": False})
         await service.stop_pixel_display()
+        return {"ok": True, "status": status_payload(request)}
+
+    @app.patch("/api/control/second-display")
+    async def control_second_display(request: Request, payload: dict[str, Any]) -> dict[str, Any]:
+        require_local_control(request)
+        try:
+            updates = _apply_second_display_payload(app_config.second_display, payload)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+        app_config.second_display.color_theme = app_config.pixel_display.color_theme
+        updates["GT7ENG_SECOND_DISPLAY_COLOR_THEME"] = app_config.pixel_display.color_theme
+        if updates:
+            root_env.update(updates)
+        await service.reconfigure_second_display()
+        if app_config.second_display.enabled:
+            await service.start_second_display()
+        return {"ok": True, "status": status_payload(request)}
+
+    @app.post("/api/control/second-display/start")
+    async def control_second_display_start(request: Request) -> dict[str, Any]:
+        require_local_control(request)
+        app_config.second_display.enabled = True
+        root_env.update({"GT7ENG_SECOND_DISPLAY_ENABLED": True})
+        await service.start_second_display()
+        return {"ok": True, "status": status_payload(request)}
+
+    @app.post("/api/control/second-display/stop")
+    async def control_second_display_stop(request: Request) -> dict[str, Any]:
+        require_local_control(request)
+        app_config.second_display.enabled = False
+        root_env.update({"GT7ENG_SECOND_DISPLAY_ENABLED": False})
+        await service.stop_second_display()
         return {"ok": True, "status": status_payload(request)}
 
     @app.patch("/api/control/wind")
@@ -617,6 +736,26 @@ def create_app(
                 current_gear=4,
                 suggested_gear=3,
                 fuel_level=42.0,
+            )
+        )
+        return Response(content=frame.to_png(), media_type="image/png")
+
+    @app.get("/api/control/second-display/preview.png")
+    async def control_second_display_preview(request: Request) -> Response:
+        require_local_control(request)
+        renderer = SecondDisplayRenderer(app_config.second_display)
+        frame = renderer.render_snapshot(
+            RaceSnapshot(
+                connected=True,
+                session_phase="racing",
+                tcs_active=True,
+                wheelspin_active=True,
+                driving_style=DrivingStyleStats(
+                    tcs_events=5,
+                    asm_events=2,
+                    wheelspin_events=7,
+                    lockup_events=1,
+                ),
             )
         )
         return Response(content=frame.to_png(), media_type="image/png")
