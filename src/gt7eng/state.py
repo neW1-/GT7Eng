@@ -16,6 +16,10 @@ from .models import (
 from .timefmt import plural
 
 
+IMPACT_CONFIRM_SECONDS = 3.0
+PIT_REFUEL_CANCEL_THRESHOLD = 5.0
+
+
 class RaceState:
     def __init__(self, config: AppConfig):
         self.config = config
@@ -36,6 +40,7 @@ class RaceState:
         self._wheelspin_active = False
         self._lockup_active = False
         self._last_incident: str | None = None
+        self._pending_impact_since: float | None = None
         self._timer_mode = "unknown"
         self._timed_race_started_at: float | None = None
         self._timed_race_elapsed_ms = 0
@@ -371,6 +376,7 @@ class RaceState:
         self._wheelspin_active = False
         self._lockup_active = False
         self._last_incident = None
+        self._pending_impact_since = None
         self._timer_mode = "unknown"
         self._timed_race_started_at = None
         self._timed_race_elapsed_ms = 0
@@ -465,7 +471,11 @@ class RaceState:
 
     def _detect_incident(self, frame: TelemetryFrame, phase: SessionPhase) -> str | None:
         last = self._last_frame
-        if last is None or phase != "racing":
+        if last is None:
+            self._pending_impact_since = None
+            return None
+        if phase != "racing":
+            self._pending_impact_since = None
             return None
         speed = frame.speed_kph or 0.0
         last_speed = last.speed_kph or 0.0
@@ -475,13 +485,35 @@ class RaceState:
 
         incident = None
         if last_speed >= 80 and speed_drop >= 55 and speed <= 40:
-            incident = "crash"
+            self._pending_impact_since = frame.timestamp
         elif speed >= 25 and (yaw_rate >= 2.5 or roll_rate >= 2.5):
+            self._pending_impact_since = None
             incident = "spin"
+        elif self._pending_impact_cancelled_by_refuel(last, frame):
+            self._pending_impact_since = None
+        elif (
+            self._pending_impact_since is not None
+            and frame.timestamp - self._pending_impact_since >= IMPACT_CONFIRM_SECONDS
+        ):
+            self._pending_impact_since = None
+            incident = "crash"
 
         if incident:
             self._last_incident = incident
         return incident
+
+    def _pending_impact_cancelled_by_refuel(
+        self,
+        last: TelemetryFrame,
+        frame: TelemetryFrame,
+    ) -> bool:
+        if self._pending_impact_since is None:
+            return False
+        last_fuel = _fuel_percent(last.fuel_level)
+        current_fuel = _fuel_percent(frame.fuel_level)
+        if last_fuel is None or current_fuel is None:
+            return False
+        return current_fuel - last_fuel >= PIT_REFUEL_CANCEL_THRESHOLD
 
     def _pit_recommendation(
         self,

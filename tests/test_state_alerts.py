@@ -731,7 +731,7 @@ def test_tire_wear_and_incident_alerts():
             wheel_rps={"fl": 20, "fr": 20, "rl": 20, "rr": 20},
         )
     )
-    alerts = service.update_frame(
+    candidate_alerts = service.update_frame(
         synthetic_frame(
             timestamp=2.0,
             speed_kph=30,
@@ -739,10 +739,79 @@ def test_tire_wear_and_incident_alerts():
             wheel_rps={"fl": 4, "fr": 4, "rl": 4, "rr": 4},
         )
     )
+    confirmed_alerts = service.update_frame(
+        synthetic_frame(
+            timestamp=5.1,
+            speed_kph=30,
+            tire_radius={"fl": 0.26, "fr": 0.33, "rl": 0.33, "rr": 0.33},
+            wheel_rps={"fl": 4, "fr": 4, "rl": 4, "rr": 4},
+        )
+    )
+
+    candidate_messages = [alert.message for alert in candidate_alerts]
+    confirmed_messages = [alert.message for alert in confirmed_alerts]
+    assert any("Estimated tire wear" in message for message in candidate_messages)
+    assert not any("Possible impact" in message for message in candidate_messages)
+    assert any("Possible impact" in message for message in confirmed_messages)
+
+
+def test_pit_transition_cancels_pending_impact_alert():
+    service = RaceEngineerService(AppConfig())
+    service.update_frame(synthetic_frame(timestamp=1.0, speed_kph=110))
+    candidate_alerts = service.update_frame(synthetic_frame(timestamp=2.0, speed_kph=30))
+    pit_alerts = service.update_frame(
+        synthetic_frame(timestamp=3.0, speed_kph=20, is_paused=True)
+    )
+    resumed_alerts = service.update_frame(synthetic_frame(timestamp=5.5, speed_kph=20))
+
+    assert not any("Possible impact" in alert.message for alert in candidate_alerts)
+    assert not any("Possible impact" in alert.message for alert in pit_alerts)
+    assert not any("Possible impact" in alert.message for alert in resumed_alerts)
+
+
+def test_refuel_jump_cancels_pending_impact_alert():
+    service = RaceEngineerService(AppConfig())
+    service.update_frame(synthetic_frame(timestamp=1.0, speed_kph=110, fuel_level=20.0))
+    candidate_alerts = service.update_frame(
+        synthetic_frame(timestamp=2.0, speed_kph=30, fuel_level=20.0)
+    )
+    refuel_alerts = service.update_frame(
+        synthetic_frame(timestamp=3.0, speed_kph=30, fuel_level=60.0)
+    )
+    later_alerts = service.update_frame(
+        synthetic_frame(timestamp=5.5, speed_kph=30, fuel_level=60.0)
+    )
+
+    assert not any("Possible impact" in alert.message for alert in candidate_alerts)
+    assert not any("Possible impact" in alert.message for alert in refuel_alerts)
+    assert not any("Possible impact" in alert.message for alert in later_alerts)
+
+
+def test_real_impact_alerts_after_confirmation_window():
+    service = RaceEngineerService(AppConfig())
+    service.update_frame(synthetic_frame(timestamp=1.0, speed_kph=110))
+    candidate_alerts = service.update_frame(synthetic_frame(timestamp=2.0, speed_kph=30))
+    early_alerts = service.update_frame(synthetic_frame(timestamp=4.0, speed_kph=30))
+    confirmed_alerts = service.update_frame(synthetic_frame(timestamp=5.1, speed_kph=30))
+
+    assert not any("Possible impact" in alert.message for alert in candidate_alerts)
+    assert not any("Possible impact" in alert.message for alert in early_alerts)
+    assert any("Possible impact" in alert.message for alert in confirmed_alerts)
+
+
+def test_spin_alert_stays_immediate():
+    service = RaceEngineerService(AppConfig())
+    service.update_frame(synthetic_frame(timestamp=1.0, speed_kph=70))
+    alerts = service.update_frame(
+        synthetic_frame(
+            timestamp=2.0,
+            speed_kph=70,
+            angular_velocity={"z": 3.0},
+        )
+    )
 
     messages = [alert.message for alert in alerts]
-    assert any("Estimated tire wear" in message for message in messages)
-    assert any("Possible impact" in message for message in messages)
+    assert any("Possible spin" in message for message in messages)
 
 
 def test_practice_driving_style_alerts_on_lap_end():
