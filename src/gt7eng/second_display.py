@@ -303,29 +303,48 @@ class SecondDisplayRenderer:
         self._draw_tire_blocks(pixels, snapshot, 0, 0, self.width, self.height)
 
     def _draw_tire_age_page(self, pixels: bytearray, snapshot: RaceSnapshot) -> None:
-        label_height = max(7, self.height // 4)
-        age_height = max(8, self.height // 4)
-        tire_y = min(self.height - 1, label_height + age_height)
-        tire_height = max(1, self.height - tire_y)
-        self._draw_text_in_area(
-            pixels,
-            "AGE",
-            self.palette.active,
-            1,
-            1,
-            self.width - 2,
-            max(1, label_height - 1),
-        )
+        corner_size = max(8, min(self.width, self.height) // 4)
+        corner_width = min(corner_size, max(1, self.width // 2))
+        corner_height = min(corner_size, max(1, self.height // 2))
+        tires = [
+            (0, 0, corner_width, corner_height, "FL", snapshot.tire_temps.fl),
+            (
+                self.width - corner_width,
+                0,
+                corner_width,
+                corner_height,
+                "FR",
+                snapshot.tire_temps.fr,
+            ),
+            (
+                0,
+                self.height - corner_height,
+                corner_width,
+                corner_height,
+                "RL",
+                snapshot.tire_temps.rl,
+            ),
+            (
+                self.width - corner_width,
+                self.height - corner_height,
+                corner_width,
+                corner_height,
+                "RR",
+                snapshot.tire_temps.rr,
+            ),
+        ]
+        for x, y, width, height, label, temp in tires:
+            self._draw_tire_block(pixels, x, y, width, height, label, temp)
+
         self._draw_text_in_area(
             pixels,
             _tire_age_text(snapshot),
             self.palette.count,
-            1,
-            label_height,
-            self.width - 2,
-            age_height,
+            corner_width,
+            corner_height,
+            max(1, self.width - corner_width * 2),
+            max(1, self.height - corner_height * 2),
         )
-        self._draw_tire_blocks(pixels, snapshot, 0, tire_y, self.width, tire_height)
 
     def _draw_tire_blocks(
         self,
@@ -352,18 +371,30 @@ class SecondDisplayRenderer:
             ),
         ]
         for x0, y0, tile_width, tile_height, label, temp in tires:
-            color = self._tire_color(temp)
-            self._fill_rect(pixels, x0, y0, tile_width, tile_height, color)
-            text_color = (0, 0, 0) if _brightness(color) > 120 else self.palette.count
-            self._draw_text_in_area(
-                pixels,
-                label,
-                text_color,
-                x0 + 1,
-                y0 + 1,
-                max(1, tile_width - 2),
-                max(1, tile_height - 2),
-            )
+            self._draw_tire_block(pixels, x0, y0, tile_width, tile_height, label, temp)
+
+    def _draw_tire_block(
+        self,
+        pixels: bytearray,
+        x: int,
+        y: int,
+        width: int,
+        height: int,
+        label: str,
+        temp: float | None,
+    ) -> None:
+        color = self._tire_color(temp)
+        self._fill_rect(pixels, x, y, width, height, color)
+        text_color = (0, 0, 0) if _brightness(color) > 120 else self.palette.count
+        self._draw_text_in_area(
+            pixels,
+            label,
+            text_color,
+            x + 1,
+            y + 1,
+            max(1, width - 2),
+            max(1, height - 2),
+        )
 
     def _tire_color(self, temp: float | None) -> Color:
         if temp is None or not math.isfinite(float(temp)):
@@ -988,7 +1019,7 @@ def _tire_age_text(snapshot: RaceSnapshot) -> str:
         age = snapshot.tire_age_laps
     if age is None:
         return "--"
-    return f"{max(0, int(age))}L"
+    return _count_text(max(0, int(age)))
 
 
 def _driving_alert_text(alert: Alert, snapshot: RaceSnapshot) -> tuple[str, str]:

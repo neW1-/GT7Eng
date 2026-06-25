@@ -165,12 +165,13 @@ def test_renderer_tire_age_alert_shows_age_and_temperature_colors():
         alert=alert("tires", "Tire age 3 laps."),
     )
 
-    assert _tire_age_text(snapshot) == "3L"
+    assert _tire_age_text(snapshot) == "3"
     assert contains_color(frame, renderer.palette.count)
-    assert frame.pixel(1, 17) == (0, 255, 0)
-    assert frame.pixel(17, 17) == (255, 238, 0)
-    assert frame.pixel(1, 25) == (255, 0, 0)
-    assert frame.pixel(17, 25) == (16, 16, 16)
+    assert frame.pixel(0, 0) == (0, 255, 0)
+    assert frame.pixel(31, 0) == (255, 238, 0)
+    assert frame.pixel(0, 31) == (255, 0, 0)
+    assert frame.pixel(31, 31) == (16, 16, 16)
+    assert frame.pixel(16, 16) == renderer.palette.count
 
 
 def test_renderer_lap_alert_shows_lap_time_and_previous_lap_delta():

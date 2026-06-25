@@ -190,7 +190,7 @@ Lap-completion pages:
 
 - Lap page: `L2/5`, lap time, and delta versus the previous lap. Faster/equal deltas use the active theme's green; slower deltas use red.
 - Fuel page: `FUEL`, fuel remaining, and fuel used on the completed lap. Values are GT7 fuel percentage points but omit the `%` glyph for matrix readability. Fuel used is green when it is less than or equal to the previous lap's usage, red when it is higher, and neutral when no previous-lap comparison exists.
-- Tire-age page: `AGE`, current tire age in completed laps, and `FL FR / RL RR` tire temperature blocks. This page appears after the lap and lap-fuel pages when tire verbosity is `balanced` or higher.
+- Tire-age page: current tire age as a center number, with `FL`, `FR`, `RL`, and `RR` tire temperature blocks in the display corners. This page appears after the lap and lap-fuel pages when tire verbosity is `balanced` or higher.
 - Driving coaching pages: lap-end `TC`, `ASM`, `WS`, or `LCK` alerts use the completed lap's counts, while the default page continues to show session totals.
 
 Other alert overrides:
