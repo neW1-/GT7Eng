@@ -31,11 +31,13 @@ class AlertManager:
         if update.snapshot.session_phase == "racing":
             self._finish_announced = False
         if update.snapshot.session_phase in {"menu", "loading", "paused", "stale"}:
-            return []
+            return self._pit_service_alerts(update)
         alerts: list[Alert] = []
         alerts.extend(self._position_alerts(update))
         alerts.extend(self._lap_alerts(update))
         alerts.extend(self._fuel_alerts(update.snapshot, completed=update.completed_lap is not None))
+        alerts.extend(self._tire_age_alerts(update))
+        alerts.extend(self._pit_service_alerts(update))
         alerts.extend(self._tire_alerts(update.snapshot))
         alerts.extend(self._incident_alerts(update))
         alerts.extend(self._driving_alerts(update))
@@ -234,6 +236,37 @@ class AlertManager:
                 priority = "important" if threshold > 10 else "critical"
                 return [self._alert("fuel", priority, f"Fuel below {threshold} percent.")]
         return []
+
+    def _tire_age_alerts(self, update: StateUpdate) -> list[Alert]:
+        if update.completed_lap is None:
+            return []
+        if not self.config.category_enabled("tires", "balanced"):
+            return []
+        age = update.completed_lap.tire_age_laps
+        if age is None:
+            return []
+        return [
+            self._alert(
+                "tires",
+                "info",
+                f"Tire age {plural(age, 'lap')}.",
+            )
+        ]
+
+    def _pit_service_alerts(self, update: StateUpdate) -> list[Alert]:
+        if not update.tire_reset_detected:
+            return []
+        if not self.config.category_enabled("pit", "balanced"):
+            return []
+        if not self._allowed("pit_service", 30):
+            return []
+        return [
+            self._alert(
+                "pit",
+                "info",
+                "Pit service detected. Tire age reset.",
+            )
+        ]
 
     def _tire_alerts(self, snapshot: RaceSnapshot) -> list[Alert]:
         if not self.config.category_enabled("tires", "critical"):

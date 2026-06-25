@@ -152,6 +152,9 @@ class SecondDisplayRenderer:
     ) -> bool:
         if alert.category == "car":
             return False
+        if alert.category == "tires" and _tire_alert_is_age(alert):
+            self._draw_tire_age_page(pixels, snapshot)
+            return True
         if alert.category == "tires":
             self._draw_tire_page(pixels, snapshot)
             return True
@@ -297,26 +300,69 @@ class SecondDisplayRenderer:
         )
 
     def _draw_tire_page(self, pixels: bytearray, snapshot: RaceSnapshot) -> None:
-        mid_x = self.width // 2
-        mid_y = self.height // 2
+        self._draw_tire_blocks(pixels, snapshot, 0, 0, self.width, self.height)
+
+    def _draw_tire_age_page(self, pixels: bytearray, snapshot: RaceSnapshot) -> None:
+        label_height = max(7, self.height // 4)
+        age_height = max(8, self.height // 4)
+        tire_y = min(self.height - 1, label_height + age_height)
+        tire_height = max(1, self.height - tire_y)
+        self._draw_text_in_area(
+            pixels,
+            "AGE",
+            self.palette.active,
+            1,
+            1,
+            self.width - 2,
+            max(1, label_height - 1),
+        )
+        self._draw_text_in_area(
+            pixels,
+            _tire_age_text(snapshot),
+            self.palette.count,
+            1,
+            label_height,
+            self.width - 2,
+            age_height,
+        )
+        self._draw_tire_blocks(pixels, snapshot, 0, tire_y, self.width, tire_height)
+
+    def _draw_tire_blocks(
+        self,
+        pixels: bytearray,
+        snapshot: RaceSnapshot,
+        x: int,
+        y: int,
+        width: int,
+        height: int,
+    ) -> None:
+        mid_x = x + width // 2
+        mid_y = y + height // 2
         tires = [
-            (0, 0, mid_x, mid_y, "FL", snapshot.tire_temps.fl),
-            (mid_x, 0, self.width - mid_x, mid_y, "FR", snapshot.tire_temps.fr),
-            (0, mid_y, mid_x, self.height - mid_y, "RL", snapshot.tire_temps.rl),
-            (mid_x, mid_y, self.width - mid_x, self.height - mid_y, "RR", snapshot.tire_temps.rr),
+            (x, y, mid_x - x, mid_y - y, "FL", snapshot.tire_temps.fl),
+            (mid_x, y, x + width - mid_x, mid_y - y, "FR", snapshot.tire_temps.fr),
+            (x, mid_y, mid_x - x, y + height - mid_y, "RL", snapshot.tire_temps.rl),
+            (
+                mid_x,
+                mid_y,
+                x + width - mid_x,
+                y + height - mid_y,
+                "RR",
+                snapshot.tire_temps.rr,
+            ),
         ]
-        for x, y, width, height, label, temp in tires:
+        for x0, y0, tile_width, tile_height, label, temp in tires:
             color = self._tire_color(temp)
-            self._fill_rect(pixels, x, y, width, height, color)
+            self._fill_rect(pixels, x0, y0, tile_width, tile_height, color)
             text_color = (0, 0, 0) if _brightness(color) > 120 else self.palette.count
             self._draw_text_in_area(
                 pixels,
                 label,
                 text_color,
-                x + 2,
-                y + 2,
-                max(1, width - 4),
-                max(1, height - 4),
+                x0 + 1,
+                y0 + 1,
+                max(1, tile_width - 2),
+                max(1, tile_height - 2),
             )
 
     def _tire_color(self, temp: float | None) -> Color:
@@ -848,6 +894,10 @@ def _fuel_alert_is_box(alert: Alert) -> bool:
     return "box" in message or "pit required" in message
 
 
+def _tire_alert_is_age(alert: Alert) -> bool:
+    return alert.message.lower().startswith("tire age ")
+
+
 def _lap_label(snapshot: RaceSnapshot, alert: Alert) -> str:
     lap_number = snapshot.lap_history[-1].lap_number if snapshot.lap_history else None
     lap_number = lap_number or _alert_lap_number(alert) or snapshot.current_lap
@@ -928,6 +978,17 @@ def _fuel_number(value: float | None) -> str:
     if value < 10 and abs(value - round(value)) >= 0.05:
         return f"{value:.1f}"
     return f"{value:.0f}"
+
+
+def _tire_age_text(snapshot: RaceSnapshot) -> str:
+    age = None
+    if snapshot.lap_history:
+        age = snapshot.lap_history[-1].tire_age_laps
+    if age is None:
+        age = snapshot.tire_age_laps
+    if age is None:
+        return "--"
+    return f"{max(0, int(age))}L"
 
 
 def _driving_alert_text(alert: Alert, snapshot: RaceSnapshot) -> tuple[str, str]:

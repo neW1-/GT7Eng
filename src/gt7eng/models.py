@@ -221,6 +221,7 @@ class LapRecord:
     lap_time_ms: int | None
     fuel_used: float | None
     completed_at: float
+    tire_age_laps: int | None = None
     driving_style: DrivingStyleStats = field(default_factory=DrivingStyleStats)
 
     @property
@@ -265,6 +266,8 @@ class RaceSnapshot:
     tire_temps: WheelValues = field(default_factory=WheelValues)
     tire_radius: WheelValues = field(default_factory=WheelValues)
     tire_wear_percent: WheelValues = field(default_factory=WheelValues)
+    tire_age_laps: int | None = None
+    tire_stint_start_lap: int | None = None
     oil_temp: float | None = None
     water_temp: float | None = None
     track_id: int | None = None
@@ -301,6 +304,7 @@ class StateUpdate:
     position_changed: tuple[int | None, int] | None = None
     incident_detected: str | None = None
     driving_event: str | None = None
+    tire_reset_detected: bool = False
 
 
 @dataclass(slots=True)

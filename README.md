@@ -35,6 +35,7 @@ Local Gran Turismo 7 race engineer for macOS. It auto-discovers the PS5 via `gt-
 - [x] HUD settings changes persist back to `.env` while keeping Discord tokens, IDs, and API secrets out of editable forms.
 - [x] Software pixel-display preview endpoint for hardware-free HUD tuning.
 - [x] Optional second BLE coaching display for TC/ASM/WS/LCK, lap/fuel pages, tire pages, and compact alerts.
+- [x] Tire-age tracking with per-lap voice/display updates and pit-service reset detection.
 - [x] Optional Home Assistant wind simulation maps GT7 speed to a discrete fan level.
 
 ## Todo
@@ -105,6 +106,8 @@ Open `http://localhost:8001` for the HUD. Live GT7 telemetry requires GT7 teleme
 HUD control note: telemetry/status remains visible over LAN, but write actions are local-only. Open the HUD from `http://127.0.0.1:8001` or `http://localhost:8001` on the Mac to change preset, category verbosity, voice mode, mute, STT, Discord bridge, pixel display, or wind settings. Local HUD changes are persisted to `.env`; `DISCORD_STT_ENABLED` is also mirrored into `bridge/discord/.env`. Discord tokens, IDs, Home Assistant tokens, and API keys are not exposed in HUD forms.
 
 Fuel note: GT7 fuel is treated as percentage. `fuel_level=100.0` means a full tank, not 100 liters; fuel-per-lap is percentage points consumed per lap.
+
+Tire age note: GT7Eng tracks tire age as completed laps on the current inferred tire set. Tire age starts at `0` on lap 1 and becomes `1` when lap 1 is completed. The age resets when fuel jumps upward by at least `5` percentage points, which is treated as likely pit service, or when estimated worst tire wear drops by at least `5` percentage points, which is treated as likely tire replacement. GT7 telemetry used here does not expose tire compound or an explicit tire-change flag, so these are inferred signals.
 
 Fuel strategy note: the HUD separates current-stint range from finish margin:
 
@@ -187,13 +190,14 @@ Lap-completion pages:
 
 - Lap page: `L2/5`, lap time, and delta versus the previous lap. Faster/equal deltas use the active theme's green; slower deltas use red.
 - Fuel page: `FUEL`, fuel remaining, and fuel used on the completed lap. Values are GT7 fuel percentage points but omit the `%` glyph for matrix readability. Fuel used is green when it is less than or equal to the previous lap's usage, red when it is higher, and neutral when no previous-lap comparison exists.
+- Tire-age page: `AGE`, current tire age in completed laps, and `FL FR / RL RR` tire temperature blocks. This page appears after the lap and lap-fuel pages when tire verbosity is `balanced` or higher.
 - Driving coaching pages: lap-end `TC`, `ASM`, `WS`, or `LCK` alerts use the completed lap's counts, while the default page continues to show session totals.
 
 Other alert overrides:
 
 - Position: `POS` plus `P current/total` when available.
 - Tires: `FL FR / RL RR` blocks colored by current tire temperature.
-- Fuel/pit, incident, and telemetry-stale alerts get compact pages.
+- Fuel/pit, incident, and telemetry-stale alerts get compact pages. Pit-service alerts are inferred from refuel or tire-wear reset signals.
 - Oil/water car-health pages are intentionally not shown on the second display.
 
 Enable it in `.env`:

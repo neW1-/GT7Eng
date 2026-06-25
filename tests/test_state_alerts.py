@@ -596,6 +596,155 @@ def test_tire_and_car_health_alerts():
     assert "car" in categories
 
 
+def test_tire_age_starts_at_zero_and_increments_on_completed_laps():
+    service = RaceEngineerService(AppConfig())
+    service.update_frame(synthetic_frame(timestamp=1.0, current_lap=1, fuel_level=80.0))
+
+    assert service.snapshot.tire_age_laps == 0
+    assert service.snapshot.tire_stint_start_lap == 1
+
+    first_lap_alerts = service.update_frame(
+        synthetic_frame(
+            timestamp=2.0,
+            current_lap=2,
+            fuel_level=80.0,
+            last_lap_time_ms=90_000,
+            best_lap_time_ms=90_000,
+        )
+    )
+    second_lap_alerts = service.update_frame(
+        synthetic_frame(
+            timestamp=3.0,
+            current_lap=3,
+            fuel_level=80.0,
+            last_lap_time_ms=91_000,
+            best_lap_time_ms=90_000,
+        )
+    )
+
+    assert service.snapshot.tire_age_laps == 2
+    assert service.snapshot.lap_history[0].tire_age_laps == 1
+    assert service.snapshot.lap_history[1].tire_age_laps == 2
+    assert any(alert.message == "Tire age 1 lap." for alert in first_lap_alerts)
+    assert any(alert.message == "Tire age 2 laps." for alert in second_lap_alerts)
+
+
+def test_tire_age_alert_is_suppressed_when_tire_verbosity_is_off():
+    config = AppConfig()
+    config.verbosity["tires"] = "off"
+    service = RaceEngineerService(config)
+    service.update_frame(synthetic_frame(timestamp=1.0, current_lap=1))
+
+    alerts = service.update_frame(
+        synthetic_frame(
+            timestamp=2.0,
+            current_lap=2,
+            last_lap_time_ms=90_000,
+            best_lap_time_ms=90_000,
+        )
+    )
+
+    assert not any("Tire age" in alert.message for alert in alerts)
+
+
+def test_refuel_jump_resets_tire_age_and_alerts_pit_service():
+    service = RaceEngineerService(AppConfig())
+    service.update_frame(synthetic_frame(timestamp=1.0, current_lap=1, fuel_level=80.0))
+    service.update_frame(
+        synthetic_frame(
+            timestamp=2.0,
+            current_lap=2,
+            fuel_level=70.0,
+            last_lap_time_ms=90_000,
+            best_lap_time_ms=90_000,
+        )
+    )
+
+    alerts = service.update_frame(
+        synthetic_frame(timestamp=3.0, current_lap=2, fuel_level=76.0)
+    )
+
+    assert service.snapshot.tire_age_laps == 0
+    assert service.snapshot.tire_stint_start_lap == 2
+    assert any(
+        alert.category == "pit"
+        and alert.message == "Pit service detected. Tire age reset."
+        for alert in alerts
+    )
+
+
+def test_tire_wear_drop_resets_tire_age_and_radius_baseline():
+    service = RaceEngineerService(AppConfig())
+    service.update_frame(
+        synthetic_frame(
+            timestamp=1.0,
+            current_lap=1,
+            tire_radius={"fl": 0.34, "fr": 0.34, "rl": 0.34, "rr": 0.34},
+        )
+    )
+    service.update_frame(
+        synthetic_frame(
+            timestamp=2.0,
+            current_lap=1,
+            tire_radius={"fl": 0.30, "fr": 0.34, "rl": 0.34, "rr": 0.34},
+        )
+    )
+
+    alerts = service.update_frame(
+        synthetic_frame(
+            timestamp=3.0,
+            current_lap=1,
+            tire_radius={"fl": 0.335, "fr": 0.34, "rl": 0.34, "rr": 0.34},
+        )
+    )
+    service.update_frame(
+        synthetic_frame(
+            timestamp=4.0,
+            current_lap=1,
+            tire_radius={"fl": 0.325, "fr": 0.34, "rl": 0.34, "rr": 0.34},
+        )
+    )
+
+    assert any("Pit service detected" in alert.message for alert in alerts)
+    assert service.snapshot.tire_wear_percent.fl is not None
+    assert service.snapshot.tire_wear_percent.fl < 3.5
+
+
+def test_tire_age_does_not_reset_without_refuel_or_wear_drop():
+    service = RaceEngineerService(AppConfig())
+    service.update_frame(
+        synthetic_frame(
+            timestamp=1.0,
+            current_lap=1,
+            fuel_level=80.0,
+            tire_radius={"fl": 0.34, "fr": 0.34, "rl": 0.34, "rr": 0.34},
+        )
+    )
+    service.update_frame(
+        synthetic_frame(
+            timestamp=2.0,
+            current_lap=2,
+            fuel_level=76.0,
+            tire_radius={"fl": 0.335, "fr": 0.34, "rl": 0.34, "rr": 0.34},
+            last_lap_time_ms=90_000,
+            best_lap_time_ms=90_000,
+        )
+    )
+
+    alerts = service.update_frame(
+        synthetic_frame(
+            timestamp=3.0,
+            current_lap=2,
+            fuel_level=73.0,
+            tire_radius={"fl": 0.333, "fr": 0.34, "rl": 0.34, "rr": 0.34},
+        )
+    )
+
+    assert service.snapshot.tire_age_laps == 1
+    assert service.snapshot.tire_stint_start_lap == 1
+    assert not any("Pit service detected" in alert.message for alert in alerts)
+
+
 def test_spoken_alerts_queue_voice_jobs_once():
     service = RaceEngineerService(AppConfig())
     service.update_frame(synthetic_frame(timestamp=1.0, current_lap=1, current_position=4))

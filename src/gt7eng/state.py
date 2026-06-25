@@ -18,6 +18,8 @@ from .timefmt import plural
 
 IMPACT_CONFIRM_SECONDS = 3.0
 PIT_REFUEL_CANCEL_THRESHOLD = 5.0
+PIT_SERVICE_REFUEL_THRESHOLD = 5.0
+TIRE_REPLACEMENT_WEAR_DROP_THRESHOLD = 5.0
 
 
 class RaceState:
@@ -34,6 +36,8 @@ class RaceState:
         self._saw_racing = False
         self._non_racing_since: float | None = None
         self._tire_radius_baseline: WheelValues | None = None
+        self._tire_stint_start_lap: int | None = None
+        self._last_tire_wear_max: float | None = None
         self._driving_style = DrivingStyleStats()
         self._last_tcs_active = False
         self._last_asm_active = False
@@ -56,9 +60,11 @@ class RaceState:
         self._packet_count += 1
         self._first_frame_time = self._first_frame_time or now
         phase = self._session_phase(frame)
-        if self._new_session_started(frame, phase):
+        new_session_started = self._new_session_started(frame, phase)
+        if new_session_started:
             self._reset_race_session()
         self._update_lifecycle(frame, phase)
+        self._ensure_tire_stint_started(frame)
         if frame.current_lap is not None and frame.current_lap > 0:
             self._lap_start_driving_style.setdefault(
                 frame.current_lap,
@@ -70,12 +76,16 @@ class RaceState:
         position_changed = self._detect_position_change(frame)
         driving_event = self._update_driving_style(frame)
         incident_detected = self._detect_incident(frame, phase)
+        tire_wear = self._tire_wear(frame)
+        tire_reset_detected = False
+        if not new_session_started:
+            tire_reset_detected, tire_wear = self._detect_tire_reset(frame, tire_wear)
 
         fuel_percent = _fuel_percent(frame.fuel_level)
         if frame.current_lap is not None and fuel_percent is not None:
             self._lap_start_fuel.setdefault(frame.current_lap, fuel_percent)
 
-        snapshot = self._build_snapshot(frame, phase, incident_detected)
+        snapshot = self._build_snapshot(frame, phase, incident_detected, tire_wear)
         self._last_frame = frame
         self._last_snapshot = snapshot
         return StateUpdate(
@@ -86,6 +96,7 @@ class RaceState:
             position_changed=position_changed,
             incident_detected=incident_detected,
             driving_event=driving_event,
+            tire_reset_detected=tire_reset_detected,
         )
 
     def stale_snapshot(self) -> RaceSnapshot:
@@ -117,6 +128,7 @@ class RaceState:
             lap_time_ms=frame.last_lap_time_ms,
             fuel_used=fuel_used,
             completed_at=frame.timestamp,
+            tire_age_laps=self._completed_tire_age(last.current_lap),
             driving_style=self._lap_driving_style(last.current_lap),
         )
         self.lap_history.append(lap)
@@ -137,6 +149,7 @@ class RaceState:
         frame: TelemetryFrame,
         phase: SessionPhase,
         incident_detected: str | None,
+        tire_wear: WheelValues,
     ) -> RaceSnapshot:
         fuel_samples = self._fuel_samples()
         fuel_per_lap = self._fuel_per_lap(fuel_samples)
@@ -164,7 +177,6 @@ class RaceState:
         )
         packet_rate = self._packet_rate()
         age = max(0.0, time.time() - frame.timestamp)
-        tire_wear = self._tire_wear(frame)
         return RaceSnapshot(
             connected=age <= self.config.stale_seconds,
             last_packet_age=age,
@@ -205,6 +217,8 @@ class RaceState:
             tire_temps=frame.tire_temps,
             tire_radius=frame.tire_radius,
             tire_wear_percent=tire_wear,
+            tire_age_laps=self._live_tire_age(frame.current_lap),
+            tire_stint_start_lap=self._tire_stint_start_lap,
             oil_temp=frame.oil_temp,
             water_temp=frame.water_temp,
             track_id=frame.track_id,
@@ -370,6 +384,8 @@ class RaceState:
         self._lap_start_fuel.clear()
         self._lap_start_driving_style.clear()
         self._tire_radius_baseline = None
+        self._tire_stint_start_lap = None
+        self._last_tire_wear_max = None
         self._driving_style = DrivingStyleStats()
         self._last_tcs_active = False
         self._last_asm_active = False
@@ -384,17 +400,76 @@ class RaceState:
         self._saw_racing = False
         self._non_racing_since = None
 
+    def _ensure_tire_stint_started(self, frame: TelemetryFrame) -> None:
+        if self._tire_stint_start_lap is not None:
+            return
+        if frame.current_lap is None or frame.current_lap <= 0:
+            return
+        self._tire_stint_start_lap = frame.current_lap
+
+    def _completed_tire_age(self, lap_number: int) -> int | None:
+        if self._tire_stint_start_lap is None:
+            return None
+        return max(1, lap_number - self._tire_stint_start_lap + 1)
+
+    def _live_tire_age(self, current_lap: int | None) -> int | None:
+        if current_lap is None or current_lap <= 0 or self._tire_stint_start_lap is None:
+            return None
+        return max(0, current_lap - self._tire_stint_start_lap)
+
+    def _detect_tire_reset(
+        self,
+        frame: TelemetryFrame,
+        tire_wear: WheelValues,
+    ) -> tuple[bool, WheelValues]:
+        refuel_reset = self._pit_service_refuel_detected(frame)
+        wear_reset = self._tire_replacement_detected(tire_wear)
+        reset_detected = refuel_reset or wear_reset
+        if reset_detected and frame.current_lap is not None and frame.current_lap > 0:
+            self._tire_stint_start_lap = frame.current_lap
+        if wear_reset:
+            self._set_tire_radius_baseline(frame)
+            tire_wear = self._tire_wear(frame)
+
+        current_wear = tire_wear.max()
+        if current_wear is not None:
+            self._last_tire_wear_max = current_wear
+        return reset_detected, tire_wear
+
+    def _pit_service_refuel_detected(self, frame: TelemetryFrame) -> bool:
+        last = self._last_frame
+        if last is None:
+            return False
+        last_fuel = _fuel_percent(last.fuel_level)
+        current_fuel = _fuel_percent(frame.fuel_level)
+        if last_fuel is None or current_fuel is None:
+            return False
+        return current_fuel - last_fuel >= PIT_SERVICE_REFUEL_THRESHOLD
+
+    def _tire_replacement_detected(self, tire_wear: WheelValues) -> bool:
+        current_wear = tire_wear.max()
+        if current_wear is None or self._last_tire_wear_max is None:
+            return False
+        return (
+            self._last_tire_wear_max - current_wear
+            >= TIRE_REPLACEMENT_WEAR_DROP_THRESHOLD
+        )
+
+    def _set_tire_radius_baseline(self, frame: TelemetryFrame) -> None:
+        radii = frame.tire_radius
+        values = radii.values()
+        if values and all(value > 0 for value in values):
+            self._tire_radius_baseline = WheelValues(
+                fl=radii.fl,
+                fr=radii.fr,
+                rl=radii.rl,
+                rr=radii.rr,
+            )
+
     def _tire_wear(self, frame: TelemetryFrame) -> WheelValues:
         radii = frame.tire_radius
         if self._tire_radius_baseline is None:
-            values = radii.values()
-            if values and all(value > 0 for value in values):
-                self._tire_radius_baseline = WheelValues(
-                    fl=radii.fl,
-                    fr=radii.fr,
-                    rl=radii.rl,
-                    rr=radii.rr,
-                )
+            self._set_tire_radius_baseline(frame)
             return WheelValues()
 
         def wear(base: float | None, current: float | None) -> float | None:
