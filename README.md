@@ -14,7 +14,7 @@ Local Gran Turismo 7 race engineer for macOS. It auto-discovers the PS5 via `gt-
 - [x] Replay fixture and automated tests for the core race logic.
 - [x] Optional Discord audio-to-STT path with deterministic command handling.
 - [x] Optional Piper/radio-style TTS provider with `say` fallback.
-- [x] Session phase, incident, tire-wear, and driving-style monitors.
+- [x] Session phase, spin, tire-wear, and driving-style monitors.
 - [x] Live PS5 auto-discovery, HUD, and on-track GT7 telemetry smoke test.
 - [x] Live Discord voice join, radio-check playback, and proactive position-alert playback.
 - [x] Live Discord driver-audio receive, `tiny.en` STT, and spoken position Q&A round trip.
@@ -45,7 +45,7 @@ Local Gran Turismo 7 race engineer for macOS. It auto-discovers the PS5 via `gt-
 - [x] Add Piper/radio-style TTS while keeping macOS `say` as fallback.
 - [x] Add race lifecycle handling for loading/menu/paused/finished states.
 - [x] Normalize richer telemetry fields for motion, tire radius, and driving aids.
-- [x] Add lap delta, final-lap, tire-wear, incident, and driving-style monitors.
+- [x] Add lap delta, final-lap, tire-wear, spin, and driving-style monitors.
 - [x] Add HUD and `doctor` status for STT, TTS, session phase, and Discord receive health.
 - [x] Wire Discord received audio into STT/VAD instead of only monitoring driver audio packets.
 - [x] Add wake-phrase detection for `wake_phrase` mode.
@@ -64,7 +64,7 @@ Local Gran Turismo 7 race engineer for macOS. It auto-discovers the PS5 via `gt-
 - [x] Add LLM intent repair for noisy Discord STT transcripts.
 - [x] Add short-turn follow-up memory for recent deterministic race answers.
 - [x] Throttle spoken telemetry-stale alerts and keep telemetry-connected alerts silent to avoid voice loops during packet flaps.
-- [x] Add richer incident/coaching monitors for lockups, wheelspin, spins, and impact-like events.
+- [x] Add richer coaching monitors for lockups, wheelspin, spins, and driver-assist events.
 - [ ] Add off-track detection if GT7 exposes a reliable signal.
 - [x] Add HUD controls for preset, category verbosity, voice mode, mute, and STT status.
 - [x] Add HUD Discord bridge status plus local-only start/stop/restart controls.
@@ -107,7 +107,9 @@ HUD control note: telemetry/status remains visible over LAN, but write actions a
 
 Fuel note: GT7 fuel is treated as percentage. `fuel_level=100.0` means a full tank, not 100 liters; fuel-per-lap is percentage points consumed per lap.
 
-Tire age note: GT7Eng tracks tire age as completed laps on the current inferred tire set. Tire age starts at `0` on lap 1 and becomes `1` when lap 1 is completed. The age resets when fuel jumps upward by at least `5` percentage points, which is treated as likely pit service, or when estimated worst tire wear drops by at least `5` percentage points, which is treated as likely tire replacement. GT7 telemetry used here does not expose tire compound or an explicit tire-change flag, so these are inferred signals.
+Tire age note: GT7Eng tracks tire age as completed laps on the current inferred tire set. Tire age starts at `0` on lap 1 and becomes `1` when lap 1 is completed. The age resets when fuel jumps upward by at least `1` percentage point, estimated worst tire wear drops by at least `5` percentage points, or at least two tire radii jump upward by at least `1.5%`. GT7 telemetry used here does not expose pit lane, tire compound, or an explicit tire-change flag, so these are inferred pit-service signals.
+
+Pit service note: the engineer stores the most recent inferred pit service and can answer “how long ago did I pit?” in completed laps since service. Impact/hit alerts are intentionally disabled because they were noisy and low value; spin alerts remain enabled.
 
 Fuel strategy note: the HUD separates current-stint range from finish margin:
 
@@ -197,7 +199,7 @@ Other alert overrides:
 
 - Position: `POS` plus `P current/total` when available.
 - Tires: `FL FR / RL RR` blocks colored by current tire temperature.
-- Fuel/pit, incident, and telemetry-stale alerts get compact pages. Pit-service alerts are inferred from refuel or tire-wear reset signals.
+- Fuel/pit, spin incident, and telemetry-stale alerts get compact pages. Pit-service alerts are inferred from refuel or tire-change signals.
 - Oil/water car-health pages are intentionally not shown on the second display.
 
 Enable it in `.env`:

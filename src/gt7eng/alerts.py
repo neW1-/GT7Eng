@@ -254,7 +254,7 @@ class AlertManager:
         ]
 
     def _pit_service_alerts(self, update: StateUpdate) -> list[Alert]:
-        if not update.tire_reset_detected:
+        if update.pit_service is None:
             return []
         if not self.config.category_enabled("pit", "balanced"):
             return []
@@ -304,18 +304,15 @@ class AlertManager:
         return alerts
 
     def _incident_alerts(self, update: StateUpdate) -> list[Alert]:
-        if not update.incident_detected:
+        if update.incident_detected != "spin":
             return []
         if not self.config.category_enabled("incident", "balanced"):
             return []
         if not self._allowed(f"incident_{update.incident_detected}", 120):
             return []
-        message = (
-            "Possible spin detected. Get it settled."
-            if update.incident_detected == "spin"
-            else "Possible impact detected. Check the car."
-        )
-        return [self._alert("incident", "important", message)]
+        return [
+            self._alert("incident", "important", "Possible spin detected. Get it settled.")
+        ]
 
     def _driving_alerts(self, update: StateUpdate) -> list[Alert]:
         if update.completed_lap is None:

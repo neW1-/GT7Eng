@@ -11,6 +11,7 @@ AlertPriority = Literal["critical", "important", "info"]
 SessionPhase = Literal["unknown", "menu", "loading", "paused", "racing", "finished", "stale"]
 RaceMode = Literal["unknown", "lap", "timed"]
 TimerMode = Literal["unknown", "app_elapsed"]
+PitServiceReason = Literal["refuel", "tire_replacement", "tire_radius_reset"]
 
 
 @dataclass(slots=True)
@@ -230,6 +231,16 @@ class LapRecord:
 
 
 @dataclass(slots=True)
+class PitServiceRecord:
+    detected_at: float
+    lap_number: int | None
+    completed_lap_count: int
+    laps_since_pit: int
+    reason: PitServiceReason
+    fuel_level: float | None = None
+
+
+@dataclass(slots=True)
 class RaceSnapshot:
     connected: bool = False
     last_packet_age: float | None = None
@@ -268,6 +279,8 @@ class RaceSnapshot:
     tire_wear_percent: WheelValues = field(default_factory=WheelValues)
     tire_age_laps: int | None = None
     tire_stint_start_lap: int | None = None
+    last_pit_service: PitServiceRecord | None = None
+    laps_since_pit_service: int | None = None
     oil_temp: float | None = None
     water_temp: float | None = None
     track_id: int | None = None
@@ -305,6 +318,7 @@ class StateUpdate:
     incident_detected: str | None = None
     driving_event: str | None = None
     tire_reset_detected: bool = False
+    pit_service: PitServiceRecord | None = None
 
 
 @dataclass(slots=True)

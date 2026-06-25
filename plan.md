@@ -15,7 +15,7 @@ The rig display path now supports two BLE matrices: a primary gear/rev display a
 - [x] Add Piper/radio-style TTS while keeping macOS `say` as fallback.
 - [x] Add race lifecycle handling for loading/menu/paused/finished states.
 - [x] Normalize richer telemetry fields for motion, tire radius, and driving aids.
-- [x] Add lap delta, final-lap, tire-wear, incident, and driving-style monitors.
+- [x] Add lap delta, final-lap, tire-wear, spin, and driving-style monitors.
 - [x] Add HUD and `doctor` status for STT, TTS, session phase, and Discord receive health.
 
 ## Core Architecture
@@ -24,7 +24,7 @@ The rig display path now supports two BLE matrices: a primary gear/rev display a
   - [x] Receives GT7 UDP telemetry, normalizes it, and maintains race state.
   - [x] Live PS5 auto-discovery and on-track GT7 telemetry smoke test passed.
   - [x] Runs deterministic monitors for fuel, pit timing, laps, position, tire age, tire/car health, and connection health.
-  - [x] Add richer pace and incident monitors for lockups, wheelspin, spins, and impact-like events.
+  - [x] Add richer pace/coaching monitors for lockups, wheelspin, spins, and driver-assist events.
   - [x] Maintains short, in-process conversational memory for one recent deterministic answer.
   - [x] Publishes snapshots and alert pages to primary and second BLE display managers without blocking telemetry.
   - [ ] Add off-track and corner-loss monitors if GT7 exposes reliable signals.
@@ -67,8 +67,8 @@ The rig display path now supports two BLE matrices: a primary gear/rev display a
   - [x] Tire temps, wheel speeds, suspension height, engine/oil/water data.
   - [x] Motion, rotation, angular velocity, tire radius, TCS/ASM, handbrake, rev-limit, and in-gear flags.
   - [x] Live wheelspin and lockup flags plus per-lap TC/ASM/WS/LCK event counts.
-  - [x] Tire age in completed laps from race start, reset by likely pit service or tire replacement.
-  - [x] Tire replacement is inferred from estimated worst tire wear dropping by at least 5 percentage points; tire compound and explicit tire-change state are not available from the current telemetry.
+  - [x] Tire age in completed laps from race start, reset by inferred pit service.
+  - [x] Pit service is inferred from refuel of at least 1 percentage point, estimated worst tire wear dropping by at least 5 percentage points, or at least two tire radii increasing by at least 1.5%; explicit pit lane, tire compound, and tire-change state are not available from the current telemetry.
   - [x] Track ID/name once detected.
 - Store session state:
   - [x] Rolling frame buffer.
@@ -89,6 +89,7 @@ The rig display path now supports two BLE matrices: a primary gear/rev display a
   - [x] Fuel: stint laps remaining, finish margin, fuel critical.
   - [x] Tire age after each completed lap when tire verbosity is balanced or higher.
   - [x] Pit-service reset: “Pit service detected. Tire age reset.” when refuel or tire-replacement inference resets the stint.
+  - [x] Hit/impact alerts are disabled; spin alerts remain.
   - [ ] Fuel-save target calls.
   - [x] Pit advice distinguishes “pit required eventually” from “box this lap” urgency.
   - [x] Driving-style coaching alerts use the completed lap's events, so stale cumulative wheelspin/lockup cannot mask current-lap TC/ASM behavior.
@@ -116,6 +117,7 @@ The rig display path now supports two BLE matrices: a primary gear/rev display a
   - [x] “What’s my fuel burn rate?”
   - [x] “How much fuel did I use last lap?”
   - [x] “Do I need to pit?”
+  - [x] “How long ago did I pit?”
   - [x] “How many laps left?”
   - [x] “How much time left?”
   - [x] “Set race duration to 30 minutes.”
@@ -246,7 +248,7 @@ The rig display path now supports two BLE matrices: a primary gear/rev display a
 - [x] Render lap fuel pages after each completed lap with remaining fuel and fuel used on that lap; fuel-used color compares against the previous lap and omits the unsupported `%` glyph.
 - [x] Render tire-age pages after lap/fuel pages with completed-lap tire age plus tire temperature colors.
 - [x] Render tire alert pages as `FL FR / RL RR` blocks colored by current tire temperature.
-- [x] Render compact position, fuel/pit, incident, and telemetry-stale pages while intentionally ignoring oil/water car-health pages for this display.
+- [x] Render compact position, fuel/pit, spin incident, and telemetry-stale pages while intentionally ignoring oil/water car-health pages for this display.
 - [x] Add `/api/status`, `/api/control/second-display`, start/stop, and preview coverage plus HUD controls and `.env` persistence.
 - [ ] Live-test the second BLE display on the rig and tune alert hold, flash hold, brightness, and layout after real driving feedback.
 

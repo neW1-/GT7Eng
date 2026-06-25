@@ -250,6 +250,57 @@ def test_fuel_burn_question_needs_completed_lap():
     assert result["response"] == "Need one completed lap for fuel burn."
 
 
+def test_pit_age_question_reports_no_pit_yet():
+    service = RaceEngineerService(AppConfig())
+
+    result = service.handle_command("how long ago did I pit")
+
+    assert result["handled"] is True
+    assert result["intent"] == "pit_age"
+    assert result["response"] == "No pit service detected yet."
+
+
+def test_pit_age_question_reports_laps_since_pit_service():
+    service = RaceEngineerService(AppConfig())
+    service.update_frame(synthetic_frame(timestamp=1.0, current_lap=1, fuel_level=80.0))
+    service.update_frame(
+        synthetic_frame(
+            timestamp=2.0,
+            current_lap=2,
+            fuel_level=70.0,
+            last_lap_time_ms=90_000,
+        )
+    )
+    service.update_frame(synthetic_frame(timestamp=3.0, current_lap=2, fuel_level=71.0))
+
+    same_lap = service.handle_command("when did I pit")
+    assert same_lap["intent"] == "pit_age"
+    assert same_lap["response"] == "Pit service was this lap."
+
+    service.update_frame(
+        synthetic_frame(
+            timestamp=4.0,
+            current_lap=3,
+            fuel_level=64.0,
+            last_lap_time_ms=91_000,
+        )
+    )
+    later = service.handle_command("laps since pit")
+
+    assert later["intent"] == "pit_age"
+    assert later["response"] == "Pit service was 1 lap ago."
+
+
+def test_generic_pit_question_still_returns_strategy():
+    service = RaceEngineerService(AppConfig())
+
+    result = service.handle_command("do I need to pit")
+
+    assert result["handled"] is True
+    assert result["intent"] == "pit_status"
+    assert result["response"] == service.snapshot.pit_recommendation
+
+
 def test_best_lap_follow_up_reports_lap_number():
     service = RaceEngineerService(AppConfig())
     service.update_frame(synthetic_frame(timestamp=1.0, current_lap=1, fuel_level=80.0))

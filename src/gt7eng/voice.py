@@ -48,6 +48,8 @@ def parse_voice_command(text: str, snapshot: RaceSnapshot, config: AppConfig) ->
             1.0,
             race_duration,
         )
+    if _asks_pit_age(normalized):
+        return VoiceResult(True, False, "pit_age", _pit_age_status(snapshot))
     if _matches(normalized, "pit", "box", "stop"):
         return VoiceResult(True, False, "pit_status", snapshot.pit_recommendation)
     if (
@@ -114,6 +116,15 @@ def _last_lap_fuel(snapshot: RaceSnapshot) -> str:
     if last_lap is None or last_lap.fuel_used is None:
         return "Need one completed lap for fuel burn."
     return f"Last lap used {last_lap.fuel_used:.1f} percent fuel."
+
+
+def _pit_age_status(snapshot: RaceSnapshot) -> str:
+    if snapshot.laps_since_pit_service is None:
+        return "No pit service detected yet."
+    if snapshot.laps_since_pit_service == 0:
+        return "Pit service was this lap."
+    suffix = "" if snapshot.laps_since_pit_service == 1 else "s"
+    return f"Pit service was {snapshot.laps_since_pit_service} lap{suffix} ago."
 
 
 def _tire_status(snapshot: RaceSnapshot) -> str:
@@ -207,6 +218,27 @@ def _asks_last_lap_fuel(text: str) -> bool:
             "consumption",
             "spend",
             "spent",
+        )
+    )
+
+
+def _asks_pit_age(text: str) -> bool:
+    if not _matches(text, "pit", "box", "stop"):
+        return False
+    return any(
+        phrase in text
+        for phrase in (
+            "how long ago",
+            "when did",
+            "when was",
+            "last pit",
+            "last stop",
+            "last box",
+            "laps since",
+            "since i pit",
+            "since i pitted",
+            "since my pit",
+            "since the pit",
         )
     )
 

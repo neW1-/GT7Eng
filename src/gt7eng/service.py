@@ -751,6 +751,14 @@ def _conversation_fact_data(intent: str, snapshot: RaceSnapshot) -> dict[str, ob
             "fuel_per_lap": snapshot.fuel_per_lap,
             "laps_left": snapshot.laps_left,
         }
+    if intent == "pit_age":
+        data = {}
+        if snapshot.laps_since_pit_service is not None:
+            data["laps_since_pit_service"] = snapshot.laps_since_pit_service
+        if snapshot.last_pit_service is not None:
+            data["pit_lap_number"] = snapshot.last_pit_service.lap_number
+            data["pit_reason"] = snapshot.last_pit_service.reason
+        return data or None
     if intent == "fuel_status":
         return {
             "fuel_level": snapshot.fuel_level,

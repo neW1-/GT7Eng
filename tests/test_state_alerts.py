@@ -661,16 +661,120 @@ def test_refuel_jump_resets_tire_age_and_alerts_pit_service():
     )
 
     alerts = service.update_frame(
-        synthetic_frame(timestamp=3.0, current_lap=2, fuel_level=76.0)
+        synthetic_frame(timestamp=3.0, current_lap=2, fuel_level=71.0)
     )
 
     assert service.snapshot.tire_age_laps == 0
     assert service.snapshot.tire_stint_start_lap == 2
+    assert service.snapshot.laps_since_pit_service == 0
+    assert service.snapshot.last_pit_service is not None
+    assert service.snapshot.last_pit_service.reason == "refuel"
     assert any(
         alert.category == "pit"
         and alert.message == "Pit service detected. Tire age reset."
         for alert in alerts
     )
+
+
+def test_laps_since_pit_service_increments_after_completed_laps():
+    service = RaceEngineerService(AppConfig())
+    service.update_frame(synthetic_frame(timestamp=1.0, current_lap=1, fuel_level=80.0))
+    service.update_frame(
+        synthetic_frame(
+            timestamp=2.0,
+            current_lap=2,
+            fuel_level=70.0,
+            last_lap_time_ms=90_000,
+            best_lap_time_ms=90_000,
+        )
+    )
+    service.update_frame(synthetic_frame(timestamp=3.0, current_lap=2, fuel_level=71.0))
+    service.update_frame(
+        synthetic_frame(
+            timestamp=4.0,
+            current_lap=3,
+            fuel_level=65.0,
+            last_lap_time_ms=91_000,
+            best_lap_time_ms=90_000,
+        )
+    )
+
+    assert service.snapshot.laps_since_pit_service == 1
+    assert service.snapshot.last_pit_service is not None
+    assert service.snapshot.last_pit_service.laps_since_pit == 1
+    assert service.snapshot.tire_age_laps == 1
+
+
+def test_fallback_lap_completion_uses_last_lap_time_change():
+    service = RaceEngineerService(AppConfig())
+    service.update_frame(
+        synthetic_frame(
+            timestamp=1.0,
+            current_lap=1,
+            fuel_level=80.0,
+            last_lap_time_ms=-1,
+            best_lap_time_ms=-1,
+        )
+    )
+
+    alerts = service.update_frame(
+        synthetic_frame(
+            timestamp=2.0,
+            current_lap=1,
+            fuel_level=74.0,
+            last_lap_time_ms=90_000,
+            best_lap_time_ms=90_000,
+        )
+    )
+    duplicate_alerts = service.update_frame(
+        synthetic_frame(
+            timestamp=3.0,
+            current_lap=1,
+            fuel_level=73.0,
+            last_lap_time_ms=90_000,
+            best_lap_time_ms=90_000,
+        )
+    )
+
+    assert len(service.snapshot.lap_history) == 1
+    assert service.snapshot.lap_history[0].lap_number == 1
+    assert service.snapshot.lap_history[0].fuel_used == 6.0
+    assert service.snapshot.tire_age_laps == 1
+    assert any(alert.category == "lap" for alert in alerts)
+    assert not any(alert.category == "lap" for alert in duplicate_alerts)
+
+
+def test_fallback_lap_completion_resets_same_lap_driving_baseline():
+    config = AppConfig(preset="practice")
+    config.set_preset("practice")
+    service = RaceEngineerService(config)
+    service.update_frame(synthetic_frame(timestamp=1.0, current_lap=1, tcs_active=True))
+    service.update_frame(synthetic_frame(timestamp=1.2, current_lap=1, tcs_active=False))
+    service.update_frame(
+        synthetic_frame(
+            timestamp=2.0,
+            current_lap=1,
+            tcs_active=False,
+            last_lap_time_ms=90_000,
+            best_lap_time_ms=90_000,
+        )
+    )
+    service.update_frame(synthetic_frame(timestamp=3.0, current_lap=1, tcs_active=True))
+    service.update_frame(synthetic_frame(timestamp=3.2, current_lap=1, tcs_active=False))
+    alerts = service.update_frame(
+        synthetic_frame(
+            timestamp=4.0,
+            current_lap=1,
+            tcs_active=False,
+            last_lap_time_ms=91_000,
+            best_lap_time_ms=90_000,
+        )
+    )
+
+    completed_lap = service.snapshot.lap_history[-1]
+    assert completed_lap.lap_number == 2
+    assert completed_lap.driving_style.tcs_events == 1
+    assert not any("Traction control" in alert.message for alert in alerts)
 
 
 def test_tire_wear_drop_resets_tire_age_and_radius_baseline():
@@ -708,6 +812,29 @@ def test_tire_wear_drop_resets_tire_age_and_radius_baseline():
     assert any("Pit service detected" in alert.message for alert in alerts)
     assert service.snapshot.tire_wear_percent.fl is not None
     assert service.snapshot.tire_wear_percent.fl < 3.5
+
+
+def test_tire_radius_reset_detects_pit_service():
+    service = RaceEngineerService(AppConfig())
+    service.update_frame(
+        synthetic_frame(
+            timestamp=1.0,
+            current_lap=1,
+            tire_radius={"fl": 0.330, "fr": 0.330, "rl": 0.330, "rr": 0.330},
+        )
+    )
+
+    alerts = service.update_frame(
+        synthetic_frame(
+            timestamp=2.0,
+            current_lap=1,
+            tire_radius={"fl": 0.336, "fr": 0.336, "rl": 0.330, "rr": 0.330},
+        )
+    )
+
+    assert service.snapshot.last_pit_service is not None
+    assert service.snapshot.last_pit_service.reason == "tire_radius_reset"
+    assert any("Pit service detected" in alert.message for alert in alerts)
 
 
 def test_tire_age_does_not_reset_without_refuel_or_wear_drop():
@@ -901,10 +1028,10 @@ def test_tire_wear_and_incident_alerts():
     confirmed_messages = [alert.message for alert in confirmed_alerts]
     assert any("Estimated tire wear" in message for message in candidate_messages)
     assert not any("Possible impact" in message for message in candidate_messages)
-    assert any("Possible impact" in message for message in confirmed_messages)
+    assert not any("Possible impact" in message for message in confirmed_messages)
 
 
-def test_pit_transition_cancels_pending_impact_alert():
+def test_pit_transition_does_not_emit_impact_alert():
     service = RaceEngineerService(AppConfig())
     service.update_frame(synthetic_frame(timestamp=1.0, speed_kph=110))
     candidate_alerts = service.update_frame(synthetic_frame(timestamp=2.0, speed_kph=30))
@@ -918,25 +1045,28 @@ def test_pit_transition_cancels_pending_impact_alert():
     assert not any("Possible impact" in alert.message for alert in resumed_alerts)
 
 
-def test_refuel_jump_cancels_pending_impact_alert():
+def test_refuel_jump_detects_pit_service_without_impact_alert():
     service = RaceEngineerService(AppConfig())
-    service.update_frame(synthetic_frame(timestamp=1.0, speed_kph=110, fuel_level=20.0))
+    service.update_frame(
+        synthetic_frame(timestamp=1.0, current_lap=2, speed_kph=110, fuel_level=20.0)
+    )
     candidate_alerts = service.update_frame(
-        synthetic_frame(timestamp=2.0, speed_kph=30, fuel_level=20.0)
+        synthetic_frame(timestamp=2.0, current_lap=2, speed_kph=30, fuel_level=20.0)
     )
     refuel_alerts = service.update_frame(
-        synthetic_frame(timestamp=3.0, speed_kph=30, fuel_level=60.0)
+        synthetic_frame(timestamp=3.0, current_lap=2, speed_kph=30, fuel_level=60.0)
     )
     later_alerts = service.update_frame(
-        synthetic_frame(timestamp=5.5, speed_kph=30, fuel_level=60.0)
+        synthetic_frame(timestamp=5.5, current_lap=2, speed_kph=30, fuel_level=60.0)
     )
 
     assert not any("Possible impact" in alert.message for alert in candidate_alerts)
     assert not any("Possible impact" in alert.message for alert in refuel_alerts)
     assert not any("Possible impact" in alert.message for alert in later_alerts)
+    assert any("Pit service detected" in alert.message for alert in refuel_alerts)
 
 
-def test_real_impact_alerts_after_confirmation_window():
+def test_speed_drop_does_not_emit_impact_alert():
     service = RaceEngineerService(AppConfig())
     service.update_frame(synthetic_frame(timestamp=1.0, speed_kph=110))
     candidate_alerts = service.update_frame(synthetic_frame(timestamp=2.0, speed_kph=30))
@@ -945,7 +1075,7 @@ def test_real_impact_alerts_after_confirmation_window():
 
     assert not any("Possible impact" in alert.message for alert in candidate_alerts)
     assert not any("Possible impact" in alert.message for alert in early_alerts)
-    assert any("Possible impact" in alert.message for alert in confirmed_alerts)
+    assert not any("Possible impact" in alert.message for alert in confirmed_alerts)
 
 
 def test_spin_alert_stays_immediate():
