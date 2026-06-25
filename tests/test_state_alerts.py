@@ -1143,8 +1143,9 @@ def test_tire_radius_drop_does_not_emit_incident_alert():
 
     candidate_messages = [alert.message for alert in candidate_alerts]
     confirmed_messages = [alert.message for alert in confirmed_alerts]
+    assert any("Estimated tire wear" in message for message in candidate_messages)
     assert not any("Possible impact" in message for message in candidate_messages)
-    assert not any("Possible impact" in message for message in confirmed_messages)
+    assert any("Possible impact" in message for message in confirmed_messages)
 
 
 def test_pit_transition_does_not_emit_impact_alert():
@@ -1182,7 +1183,7 @@ def test_refuel_jump_detects_pit_service_without_impact_alert():
     assert any("Pit service detected" in alert.message for alert in refuel_alerts)
 
 
-def test_speed_drop_does_not_emit_impact_alert():
+def test_real_impact_alerts_after_confirmation_window():
     service = RaceEngineerService(AppConfig())
     service.update_frame(synthetic_frame(timestamp=1.0, speed_kph=110))
     candidate_alerts = service.update_frame(synthetic_frame(timestamp=2.0, speed_kph=30))
@@ -1191,7 +1192,7 @@ def test_speed_drop_does_not_emit_impact_alert():
 
     assert not any("Possible impact" in alert.message for alert in candidate_alerts)
     assert not any("Possible impact" in alert.message for alert in early_alerts)
-    assert not any("Possible impact" in alert.message for alert in confirmed_alerts)
+    assert any("Possible impact" in alert.message for alert in confirmed_alerts)
 
 
 def test_spin_alert_stays_immediate():
