@@ -34,6 +34,7 @@ Local Gran Turismo 7 race engineer for macOS. It auto-discovers the PS5 via `gt-
 - [x] Local-only HUD control plane for preset, category verbosity, voice mode, mute, STT settings, Discord bridge control/status, and pixel display configuration.
 - [x] HUD settings changes persist back to `.env` while keeping Discord tokens, IDs, and API secrets out of editable forms.
 - [x] Software pixel-display preview endpoint for hardware-free HUD tuning.
+- [x] Optional second BLE coaching display for TC/ASM/WS/LCK, lap/fuel pages, tire pages, and compact alerts.
 - [x] Optional Home Assistant wind simulation maps GT7 speed to a discrete fan level.
 
 ## Todo
@@ -67,6 +68,7 @@ Local Gran Turismo 7 race engineer for macOS. It auto-discovers the PS5 via `gt-
 - [x] Add HUD controls for preset, category verbosity, voice mode, mute, and STT status.
 - [x] Add HUD Discord bridge status plus local-only start/stop/restart controls.
 - [x] Add HUD pixel display start/stop/config controls and renderer preview.
+- [x] Add second BLE coaching display controls, preview, and `.env` persistence.
 - [x] Add optional Home Assistant wind simulation using the existing rig fan level entity.
 - [ ] Add persistent session/debrief output beyond JSONL capture.
 - [ ] Package a macOS-friendly launcher once the live path is stable.
@@ -169,6 +171,46 @@ gt7eng pixel-preview /private/tmp/gt7eng-pixel-preview.png --theme warm_amber --
 ```
 
 The localhost HUD can also start/stop the pixel display, edit display settings, persist them to `.env`, and show a small software preview image before using BLE hardware.
+
+## Second BLE Coaching Display
+
+GT7Eng can drive a second iPixel Color-compatible BLE matrix as a coaching display while the primary pixel display stays focused on gear, revs, shift, and optional fuel edge bar. The second display uses the same `pypixelcolor` optional dependency and has its own BLE address, update rate, brightness, sizing, status, preview, and start/stop controls.
+
+Default page:
+
+- Top area: `TC` and `ASM` with session-total event counts.
+- Bottom area: `WS` and `LCK` with session-total event counts.
+- Live interventions flash briefly, including held flashes for short events so they remain visible at BLE refresh rates.
+- Large counts stay readable beyond `99`; thousands are compacted only when needed.
+
+Lap-completion pages:
+
+- Lap page: `L2/5`, lap time, and delta versus the previous lap. Faster/equal deltas use the active theme's green; slower deltas use red.
+- Fuel page: `FUEL`, fuel remaining, and fuel used on the completed lap. Values are GT7 fuel percentage points but omit the `%` glyph for matrix readability. Fuel used is green when it is less than or equal to the previous lap's usage, red when it is higher, and neutral when no previous-lap comparison exists.
+- Driving coaching pages: lap-end `TC`, `ASM`, `WS`, or `LCK` alerts use the completed lap's counts, while the default page continues to show session totals.
+
+Other alert overrides:
+
+- Position: `POS` plus `P current/total` when available.
+- Tires: `FL FR / RL RR` blocks colored by current tire temperature.
+- Fuel/pit, incident, and telemetry-stale alerts get compact pages.
+- Oil/water car-health pages are intentionally not shown on the second display.
+
+Enable it in `.env`:
+
+```bash
+GT7ENG_SECOND_DISPLAY_ENABLED=true
+GT7ENG_SECOND_DISPLAY_ADDRESS=your-second-device-address-or-corebluetooth-uuid
+GT7ENG_SECOND_DISPLAY_UPDATE_HZ=10
+GT7ENG_SECOND_DISPLAY_BRIGHTNESS=60
+GT7ENG_SECOND_DISPLAY_SIZE_SOURCE=auto
+GT7ENG_SECOND_DISPLAY_WIDTH=64
+GT7ENG_SECOND_DISPLAY_HEIGHT=64
+GT7ENG_SECOND_DISPLAY_ALERT_HOLD_SECONDS=4
+GT7ENG_SECOND_DISPLAY_FLASH_HOLD_SECONDS=1.5
+```
+
+The second display theme is kept in sync with `GT7ENG_PIXEL_DISPLAY_COLOR_THEME`, including when the HUD changes the primary pixel display theme. Change the main pixel theme to change both displays. Custom second-display color overrides exist for fine tuning, but the theme name is intentionally synchronized.
 
 ## Home Assistant Wind Simulation
 

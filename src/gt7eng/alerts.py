@@ -289,18 +289,20 @@ class AlertManager:
             return []
         if not self.config.category_enabled("driving", "detailed"):
             return []
+        stats = update.completed_lap.driving_style
+        if stats.lockup_events >= 2:
+            message = "Brake lockups are building. Ease peak brake pressure."
+        elif stats.wheelspin_events >= 2:
+            message = "Wheelspin is costing traction. Squeeze the throttle on exit."
+        elif stats.tcs_events >= 3:
+            message = "Traction control is working often. Smooth the throttle inputs."
+        elif stats.asm_events >= 3:
+            message = "ASM is intervening often. Keep the car straighter on entry."
+        else:
+            return []
         if not self._allowed("driving_style", 120):
             return []
-        stats = update.snapshot.driving_style
-        if stats.lockup_events >= 2:
-            return [self._alert("driving", "info", "Brake lockups are building. Ease peak brake pressure.")]
-        if stats.wheelspin_events >= 2:
-            return [self._alert("driving", "info", "Wheelspin is costing traction. Squeeze the throttle on exit.")]
-        if stats.tcs_events >= 3:
-            return [self._alert("driving", "info", "Traction control is working often. Smooth the throttle inputs.")]
-        if stats.asm_events >= 3:
-            return [self._alert("driving", "info", "ASM is intervening often. Keep the car straighter on entry.")]
-        return []
+        return [self._alert("driving", "info", message)]
 
     def _car_alerts(self, snapshot: RaceSnapshot) -> list[Alert]:
         if not self.config.category_enabled("car", "critical"):

@@ -785,6 +785,112 @@ def test_practice_driving_style_alerts_on_lap_end():
     assert any("Wheelspin" in alert.message for alert in alerts)
 
 
+def test_driving_alerts_use_completed_lap_instead_of_cumulative_wheelspin():
+    config = AppConfig(preset="practice")
+    config.set_preset("practice")
+    service = RaceEngineerService(config)
+
+    for timestamp in [1.0, 1.5, 2.0]:
+        _send_wheelspin_event(service, timestamp, current_lap=1)
+    first_lap_alerts = service.update_frame(
+        synthetic_frame(
+            timestamp=3.0,
+            current_lap=2,
+            throttle=0,
+            last_lap_time_ms=98_000,
+            best_lap_time_ms=98_000,
+        )
+    )
+
+    assert any("Wheelspin" in alert.message for alert in first_lap_alerts)
+    assert service.snapshot.lap_history[-1].driving_style.wheelspin_events == 3
+
+    service.alerts._last_by_key["driving_style"] = 0
+    for timestamp in [4.0, 4.5, 5.0, 5.5]:
+        service.update_frame(
+            synthetic_frame(timestamp=timestamp, current_lap=2, tcs_active=True)
+        )
+        service.update_frame(
+            synthetic_frame(timestamp=timestamp + 0.1, current_lap=2, tcs_active=False)
+        )
+    second_lap_alerts = service.update_frame(
+        synthetic_frame(
+            timestamp=6.0,
+            current_lap=3,
+            throttle=0,
+            tcs_active=False,
+            last_lap_time_ms=98_000,
+            best_lap_time_ms=98_000,
+        )
+    )
+
+    completed_lap = service.snapshot.lap_history[-1]
+    assert completed_lap.driving_style.wheelspin_events == 0
+    assert completed_lap.driving_style.tcs_events == 4
+    assert any("Traction control" in alert.message for alert in second_lap_alerts)
+    assert not any("Wheelspin" in alert.message for alert in second_lap_alerts)
+
+
+def test_cumulative_wheelspin_does_not_alert_when_completed_lap_is_clean():
+    config = AppConfig(preset="practice")
+    config.set_preset("practice")
+    service = RaceEngineerService(config)
+
+    for timestamp in [1.0, 1.5, 2.0]:
+        _send_wheelspin_event(service, timestamp, current_lap=1)
+    first_lap_alerts = service.update_frame(
+        synthetic_frame(
+            timestamp=3.0,
+            current_lap=2,
+            throttle=0,
+            last_lap_time_ms=98_000,
+            best_lap_time_ms=98_000,
+        )
+    )
+
+    assert any("Wheelspin" in alert.message for alert in first_lap_alerts)
+
+    service.alerts._last_by_key["driving_style"] = 0
+    second_lap_alerts = service.update_frame(
+        synthetic_frame(
+            timestamp=4.0,
+            current_lap=3,
+            throttle=0,
+            last_lap_time_ms=98_000,
+            best_lap_time_ms=98_000,
+        )
+    )
+
+    completed_lap = service.snapshot.lap_history[-1]
+    assert service.snapshot.driving_style.wheelspin_events == 3
+    assert completed_lap.driving_style.wheelspin_events == 0
+    assert not any(alert.category == "driving" for alert in second_lap_alerts)
+
+
+def _send_wheelspin_event(
+    service: RaceEngineerService,
+    timestamp: float,
+    *,
+    current_lap: int,
+) -> None:
+    service.update_frame(
+        synthetic_frame(
+            timestamp=timestamp,
+            current_lap=current_lap,
+            throttle=90,
+            wheel_rps={"fl": 20, "fr": 20, "rl": 26, "rr": 26},
+        )
+    )
+    service.update_frame(
+        synthetic_frame(
+            timestamp=timestamp + 0.1,
+            current_lap=current_lap,
+            throttle=0,
+            wheel_rps={"fl": 20, "fr": 20, "rl": 20, "rr": 20},
+        )
+    )
+
+
 def test_snapshot_includes_live_wheelspin_and_lockup_flags():
     service = RaceEngineerService(AppConfig())
 
