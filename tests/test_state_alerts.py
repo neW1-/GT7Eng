@@ -596,6 +596,399 @@ def test_tire_and_car_health_alerts():
     assert "car" in categories
 
 
+def test_tire_age_starts_at_zero_and_increments_on_completed_laps():
+    service = RaceEngineerService(AppConfig())
+    service.update_frame(synthetic_frame(timestamp=1.0, current_lap=1, fuel_level=80.0))
+
+    assert service.snapshot.tire_age_laps == 0
+    assert service.snapshot.tire_stint_start_lap == 1
+
+    first_lap_alerts = service.update_frame(
+        synthetic_frame(
+            timestamp=2.0,
+            current_lap=2,
+            fuel_level=80.0,
+            last_lap_time_ms=90_000,
+            best_lap_time_ms=90_000,
+        )
+    )
+    second_lap_alerts = service.update_frame(
+        synthetic_frame(
+            timestamp=3.0,
+            current_lap=3,
+            fuel_level=80.0,
+            last_lap_time_ms=91_000,
+            best_lap_time_ms=90_000,
+        )
+    )
+
+    assert service.snapshot.tire_age_laps == 2
+    assert service.snapshot.lap_history[0].tire_age_laps == 1
+    assert service.snapshot.lap_history[1].tire_age_laps == 2
+    assert any(alert.message == "Tire age 1 lap." for alert in first_lap_alerts)
+    assert any(alert.message == "Tire age 2 laps." for alert in second_lap_alerts)
+
+
+def test_tire_age_alert_is_suppressed_when_tire_verbosity_is_off():
+    config = AppConfig()
+    config.verbosity["tires"] = "off"
+    service = RaceEngineerService(config)
+    service.update_frame(synthetic_frame(timestamp=1.0, current_lap=1))
+
+    alerts = service.update_frame(
+        synthetic_frame(
+            timestamp=2.0,
+            current_lap=2,
+            last_lap_time_ms=90_000,
+            best_lap_time_ms=90_000,
+        )
+    )
+
+    assert not any("Tire age" in alert.message for alert in alerts)
+
+
+def test_refuel_jump_resets_tire_age_and_alerts_pit_service():
+    service = RaceEngineerService(AppConfig())
+    service.update_frame(synthetic_frame(timestamp=1.0, current_lap=1, fuel_level=80.0))
+    service.update_frame(
+        synthetic_frame(
+            timestamp=2.0,
+            current_lap=2,
+            fuel_level=70.0,
+            last_lap_time_ms=90_000,
+            best_lap_time_ms=90_000,
+        )
+    )
+
+    alerts = service.update_frame(
+        synthetic_frame(timestamp=3.0, current_lap=2, fuel_level=71.0)
+    )
+
+    assert service.snapshot.tire_age_laps == 0
+    assert service.snapshot.tire_stint_start_lap == 2
+    assert service.snapshot.laps_since_pit_service == 0
+    assert service.snapshot.last_pit_service is not None
+    assert service.snapshot.last_pit_service.reason == "refuel"
+    assert any(
+        alert.category == "pit"
+        and alert.message == "Pit service detected. Tire age reset."
+        for alert in alerts
+    )
+
+
+def test_refuel_on_lap_completion_resets_tire_age_alert_to_zero():
+    service = RaceEngineerService(AppConfig())
+    service.update_frame(
+        synthetic_frame(
+            timestamp=1.0,
+            current_lap=1,
+            total_laps=50,
+            fuel_level=100.0,
+            last_lap_time_ms=-1,
+            best_lap_time_ms=-1,
+        )
+    )
+    for lap in range(2, 26):
+        service.update_frame(
+            synthetic_frame(
+                timestamp=float(lap),
+                current_lap=lap,
+                total_laps=50,
+                fuel_level=100.0 - ((lap - 1) * 3.0),
+                last_lap_time_ms=90_000 + lap,
+                best_lap_time_ms=90_000,
+            )
+        )
+
+    assert service.snapshot.tire_age_laps == 24
+
+    alerts = service.update_frame(
+        synthetic_frame(
+            timestamp=26.0,
+            current_lap=26,
+            total_laps=50,
+            fuel_level=100.0,
+            last_lap_time_ms=91_000,
+            best_lap_time_ms=90_000,
+        )
+    )
+
+    messages = [alert.message for alert in alerts]
+    assert service.snapshot.tire_age_laps == 0
+    assert service.snapshot.lap_history[-1].tire_age_laps == 0
+    assert service.snapshot.last_pit_service is not None
+    assert service.snapshot.last_pit_service.reason == "refuel"
+    assert "Tire age 0 laps." in messages
+    assert not any("Tire age 25" in message for message in messages)
+
+    next_lap_alerts = service.update_frame(
+        synthetic_frame(
+            timestamp=27.0,
+            current_lap=27,
+            total_laps=50,
+            fuel_level=95.0,
+            last_lap_time_ms=92_000,
+            best_lap_time_ms=90_000,
+        )
+    )
+
+    assert service.snapshot.tire_age_laps == 1
+    assert service.snapshot.lap_history[-1].tire_age_laps == 1
+    assert any(alert.message == "Tire age 1 lap." for alert in next_lap_alerts)
+
+
+def test_refuel_after_blank_pit_fuel_sample_resets_tire_age_from_stint_low():
+    service = RaceEngineerService(AppConfig())
+    service.update_frame(
+        synthetic_frame(
+            timestamp=1.0,
+            current_lap=1,
+            total_laps=50,
+            fuel_level=100.0,
+            last_lap_time_ms=-1,
+            best_lap_time_ms=-1,
+        )
+    )
+    for lap in range(2, 10):
+        service.update_frame(
+            synthetic_frame(
+                timestamp=float(lap),
+                current_lap=lap,
+                total_laps=50,
+                fuel_level=max(14.0, 100.0 - ((lap - 1) * 12.0)),
+                last_lap_time_ms=90_000 + lap,
+                best_lap_time_ms=90_000,
+            )
+        )
+
+    assert service.snapshot.tire_age_laps == 8
+
+    service.update_frame(
+        synthetic_frame(
+            timestamp=10.0,
+            current_lap=9,
+            total_laps=50,
+            fuel_level=None,
+            is_loading=True,
+        )
+    )
+    alerts = service.update_frame(
+        synthetic_frame(
+            timestamp=11.0,
+            current_lap=9,
+            total_laps=50,
+            fuel_level=100.0,
+        )
+    )
+
+    assert service.snapshot.tire_age_laps == 0
+    assert service.snapshot.last_pit_service is not None
+    assert service.snapshot.last_pit_service.reason == "refuel"
+    assert any("Pit service detected" in alert.message for alert in alerts)
+
+
+def test_laps_since_pit_service_increments_after_completed_laps():
+    service = RaceEngineerService(AppConfig())
+    service.update_frame(synthetic_frame(timestamp=1.0, current_lap=1, fuel_level=80.0))
+    service.update_frame(
+        synthetic_frame(
+            timestamp=2.0,
+            current_lap=2,
+            fuel_level=70.0,
+            last_lap_time_ms=90_000,
+            best_lap_time_ms=90_000,
+        )
+    )
+    service.update_frame(synthetic_frame(timestamp=3.0, current_lap=2, fuel_level=71.0))
+    service.update_frame(
+        synthetic_frame(
+            timestamp=4.0,
+            current_lap=3,
+            fuel_level=65.0,
+            last_lap_time_ms=91_000,
+            best_lap_time_ms=90_000,
+        )
+    )
+
+    assert service.snapshot.laps_since_pit_service == 1
+    assert service.snapshot.last_pit_service is not None
+    assert service.snapshot.last_pit_service.laps_since_pit == 1
+    assert service.snapshot.tire_age_laps == 1
+
+
+def test_fallback_lap_completion_uses_last_lap_time_change():
+    service = RaceEngineerService(AppConfig())
+    service.update_frame(
+        synthetic_frame(
+            timestamp=1.0,
+            current_lap=1,
+            fuel_level=80.0,
+            last_lap_time_ms=-1,
+            best_lap_time_ms=-1,
+        )
+    )
+
+    alerts = service.update_frame(
+        synthetic_frame(
+            timestamp=2.0,
+            current_lap=1,
+            fuel_level=74.0,
+            last_lap_time_ms=90_000,
+            best_lap_time_ms=90_000,
+        )
+    )
+    duplicate_alerts = service.update_frame(
+        synthetic_frame(
+            timestamp=3.0,
+            current_lap=1,
+            fuel_level=73.0,
+            last_lap_time_ms=90_000,
+            best_lap_time_ms=90_000,
+        )
+    )
+
+    assert len(service.snapshot.lap_history) == 1
+    assert service.snapshot.lap_history[0].lap_number == 1
+    assert service.snapshot.lap_history[0].fuel_used == 6.0
+    assert service.snapshot.tire_age_laps == 1
+    assert any(alert.category == "lap" for alert in alerts)
+    assert not any(alert.category == "lap" for alert in duplicate_alerts)
+
+
+def test_fallback_lap_completion_resets_same_lap_driving_baseline():
+    config = AppConfig(preset="practice")
+    config.set_preset("practice")
+    service = RaceEngineerService(config)
+    service.update_frame(synthetic_frame(timestamp=1.0, current_lap=1, tcs_active=True))
+    service.update_frame(synthetic_frame(timestamp=1.2, current_lap=1, tcs_active=False))
+    service.update_frame(
+        synthetic_frame(
+            timestamp=2.0,
+            current_lap=1,
+            tcs_active=False,
+            last_lap_time_ms=90_000,
+            best_lap_time_ms=90_000,
+        )
+    )
+    service.update_frame(synthetic_frame(timestamp=3.0, current_lap=1, tcs_active=True))
+    service.update_frame(synthetic_frame(timestamp=3.2, current_lap=1, tcs_active=False))
+    alerts = service.update_frame(
+        synthetic_frame(
+            timestamp=4.0,
+            current_lap=1,
+            tcs_active=False,
+            last_lap_time_ms=91_000,
+            best_lap_time_ms=90_000,
+        )
+    )
+
+    completed_lap = service.snapshot.lap_history[-1]
+    assert completed_lap.lap_number == 2
+    assert completed_lap.driving_style.tcs_events == 1
+    assert not any("Traction control" in alert.message for alert in alerts)
+
+
+def test_one_corner_tire_radius_bounce_does_not_reset_tire_age():
+    service = RaceEngineerService(AppConfig())
+    service.update_frame(
+        synthetic_frame(
+            timestamp=1.0,
+            current_lap=1,
+            fuel_level=80.0,
+            tire_radius={"fl": 0.34, "fr": 0.34, "rl": 0.34, "rr": 0.34},
+        )
+    )
+    service.update_frame(
+        synthetic_frame(
+            timestamp=2.0,
+            current_lap=2,
+            fuel_level=76.0,
+            tire_radius={"fl": 0.30, "fr": 0.34, "rl": 0.34, "rr": 0.34},
+            last_lap_time_ms=90_000,
+            best_lap_time_ms=90_000,
+        )
+    )
+
+    alerts = service.update_frame(
+        synthetic_frame(
+            timestamp=3.0,
+            current_lap=2,
+            fuel_level=75.0,
+            tire_radius={"fl": 0.335, "fr": 0.34, "rl": 0.34, "rr": 0.34},
+        )
+    )
+    service.update_frame(
+        synthetic_frame(
+            timestamp=4.0,
+            current_lap=2,
+            fuel_level=74.0,
+            tire_radius={"fl": 0.325, "fr": 0.34, "rl": 0.34, "rr": 0.34},
+        )
+    )
+
+    assert service.snapshot.tire_age_laps == 1
+    assert service.snapshot.last_pit_service is None
+    assert not any("Pit service detected" in alert.message for alert in alerts)
+
+
+def test_tire_radius_reset_detects_pit_service():
+    service = RaceEngineerService(AppConfig())
+    service.update_frame(
+        synthetic_frame(
+            timestamp=1.0,
+            current_lap=1,
+            tire_radius={"fl": 0.330, "fr": 0.330, "rl": 0.330, "rr": 0.330},
+        )
+    )
+
+    alerts = service.update_frame(
+        synthetic_frame(
+            timestamp=2.0,
+            current_lap=1,
+            tire_radius={"fl": 0.336, "fr": 0.336, "rl": 0.330, "rr": 0.330},
+        )
+    )
+
+    assert service.snapshot.last_pit_service is not None
+    assert service.snapshot.last_pit_service.reason == "tire_radius_reset"
+    assert any("Pit service detected" in alert.message for alert in alerts)
+
+
+def test_tire_age_does_not_reset_without_refuel_or_radius_reset():
+    service = RaceEngineerService(AppConfig())
+    service.update_frame(
+        synthetic_frame(
+            timestamp=1.0,
+            current_lap=1,
+            fuel_level=80.0,
+            tire_radius={"fl": 0.34, "fr": 0.34, "rl": 0.34, "rr": 0.34},
+        )
+    )
+    service.update_frame(
+        synthetic_frame(
+            timestamp=2.0,
+            current_lap=2,
+            fuel_level=76.0,
+            tire_radius={"fl": 0.335, "fr": 0.34, "rl": 0.34, "rr": 0.34},
+            last_lap_time_ms=90_000,
+            best_lap_time_ms=90_000,
+        )
+    )
+
+    alerts = service.update_frame(
+        synthetic_frame(
+            timestamp=3.0,
+            current_lap=2,
+            fuel_level=73.0,
+            tire_radius={"fl": 0.333, "fr": 0.34, "rl": 0.34, "rr": 0.34},
+        )
+    )
+
+    assert service.snapshot.tire_age_laps == 1
+    assert service.snapshot.tire_stint_start_lap == 1
+    assert not any("Pit service detected" in alert.message for alert in alerts)
+
+
 def test_spoken_alerts_queue_voice_jobs_once():
     service = RaceEngineerService(AppConfig())
     service.update_frame(synthetic_frame(timestamp=1.0, current_lap=1, current_position=4))
@@ -721,7 +1114,7 @@ def test_finish_summary_alert_uses_missing_data_fallbacks():
     ]
 
 
-def test_tire_wear_and_incident_alerts():
+def test_tire_radius_drop_does_not_emit_incident_alert():
     service = RaceEngineerService(AppConfig())
     service.update_frame(
         synthetic_frame(
@@ -731,7 +1124,7 @@ def test_tire_wear_and_incident_alerts():
             wheel_rps={"fl": 20, "fr": 20, "rl": 20, "rr": 20},
         )
     )
-    alerts = service.update_frame(
+    candidate_alerts = service.update_frame(
         synthetic_frame(
             timestamp=2.0,
             speed_kph=30,
@@ -739,10 +1132,81 @@ def test_tire_wear_and_incident_alerts():
             wheel_rps={"fl": 4, "fr": 4, "rl": 4, "rr": 4},
         )
     )
+    confirmed_alerts = service.update_frame(
+        synthetic_frame(
+            timestamp=5.1,
+            speed_kph=30,
+            tire_radius={"fl": 0.26, "fr": 0.33, "rl": 0.33, "rr": 0.33},
+            wheel_rps={"fl": 4, "fr": 4, "rl": 4, "rr": 4},
+        )
+    )
+
+    candidate_messages = [alert.message for alert in candidate_alerts]
+    confirmed_messages = [alert.message for alert in confirmed_alerts]
+    assert not any("Possible impact" in message for message in candidate_messages)
+    assert not any("Possible impact" in message for message in confirmed_messages)
+
+
+def test_pit_transition_does_not_emit_impact_alert():
+    service = RaceEngineerService(AppConfig())
+    service.update_frame(synthetic_frame(timestamp=1.0, speed_kph=110))
+    candidate_alerts = service.update_frame(synthetic_frame(timestamp=2.0, speed_kph=30))
+    pit_alerts = service.update_frame(
+        synthetic_frame(timestamp=3.0, speed_kph=20, is_paused=True)
+    )
+    resumed_alerts = service.update_frame(synthetic_frame(timestamp=5.5, speed_kph=20))
+
+    assert not any("Possible impact" in alert.message for alert in candidate_alerts)
+    assert not any("Possible impact" in alert.message for alert in pit_alerts)
+    assert not any("Possible impact" in alert.message for alert in resumed_alerts)
+
+
+def test_refuel_jump_detects_pit_service_without_impact_alert():
+    service = RaceEngineerService(AppConfig())
+    service.update_frame(
+        synthetic_frame(timestamp=1.0, current_lap=2, speed_kph=110, fuel_level=20.0)
+    )
+    candidate_alerts = service.update_frame(
+        synthetic_frame(timestamp=2.0, current_lap=2, speed_kph=30, fuel_level=20.0)
+    )
+    refuel_alerts = service.update_frame(
+        synthetic_frame(timestamp=3.0, current_lap=2, speed_kph=30, fuel_level=60.0)
+    )
+    later_alerts = service.update_frame(
+        synthetic_frame(timestamp=5.5, current_lap=2, speed_kph=30, fuel_level=60.0)
+    )
+
+    assert not any("Possible impact" in alert.message for alert in candidate_alerts)
+    assert not any("Possible impact" in alert.message for alert in refuel_alerts)
+    assert not any("Possible impact" in alert.message for alert in later_alerts)
+    assert any("Pit service detected" in alert.message for alert in refuel_alerts)
+
+
+def test_speed_drop_does_not_emit_impact_alert():
+    service = RaceEngineerService(AppConfig())
+    service.update_frame(synthetic_frame(timestamp=1.0, speed_kph=110))
+    candidate_alerts = service.update_frame(synthetic_frame(timestamp=2.0, speed_kph=30))
+    early_alerts = service.update_frame(synthetic_frame(timestamp=4.0, speed_kph=30))
+    confirmed_alerts = service.update_frame(synthetic_frame(timestamp=5.1, speed_kph=30))
+
+    assert not any("Possible impact" in alert.message for alert in candidate_alerts)
+    assert not any("Possible impact" in alert.message for alert in early_alerts)
+    assert not any("Possible impact" in alert.message for alert in confirmed_alerts)
+
+
+def test_spin_alert_stays_immediate():
+    service = RaceEngineerService(AppConfig())
+    service.update_frame(synthetic_frame(timestamp=1.0, speed_kph=70))
+    alerts = service.update_frame(
+        synthetic_frame(
+            timestamp=2.0,
+            speed_kph=70,
+            angular_velocity={"z": 3.0},
+        )
+    )
 
     messages = [alert.message for alert in alerts]
-    assert any("Estimated tire wear" in message for message in messages)
-    assert any("Possible impact" in message for message in messages)
+    assert any("Possible spin" in message for message in messages)
 
 
 def test_practice_driving_style_alerts_on_lap_end():
@@ -783,6 +1247,562 @@ def test_practice_driving_style_alerts_on_lap_end():
     )
 
     assert any("Wheelspin" in alert.message for alert in alerts)
+
+
+def test_driving_alerts_use_completed_lap_instead_of_cumulative_wheelspin():
+    config = AppConfig(preset="practice")
+    config.set_preset("practice")
+    service = RaceEngineerService(config)
+
+    for timestamp in [1.0, 1.5, 2.0]:
+        _send_wheelspin_event(service, timestamp, current_lap=1)
+    first_lap_alerts = service.update_frame(
+        synthetic_frame(
+            timestamp=3.0,
+            current_lap=2,
+            throttle=0,
+            last_lap_time_ms=98_000,
+            best_lap_time_ms=98_000,
+        )
+    )
+
+    assert any("Wheelspin" in alert.message for alert in first_lap_alerts)
+    assert service.snapshot.lap_history[-1].driving_style.wheelspin_events == 3
+
+    service.alerts._last_by_key["driving_style"] = 0
+    for timestamp in [4.0, 4.5, 5.0, 5.5]:
+        service.update_frame(
+            synthetic_frame(timestamp=timestamp, current_lap=2, tcs_active=True)
+        )
+        service.update_frame(
+            synthetic_frame(timestamp=timestamp + 0.1, current_lap=2, tcs_active=False)
+        )
+    second_lap_alerts = service.update_frame(
+        synthetic_frame(
+            timestamp=6.0,
+            current_lap=3,
+            throttle=0,
+            tcs_active=False,
+            last_lap_time_ms=98_000,
+            best_lap_time_ms=98_000,
+        )
+    )
+
+    completed_lap = service.snapshot.lap_history[-1]
+    assert completed_lap.driving_style.wheelspin_events == 0
+    assert completed_lap.driving_style.tcs_events == 4
+    assert any("Traction control" in alert.message for alert in second_lap_alerts)
+    assert not any("Wheelspin" in alert.message for alert in second_lap_alerts)
+
+
+def test_cumulative_wheelspin_does_not_alert_when_completed_lap_is_clean():
+    config = AppConfig(preset="practice")
+    config.set_preset("practice")
+    service = RaceEngineerService(config)
+
+    for timestamp in [1.0, 1.5, 2.0]:
+        _send_wheelspin_event(service, timestamp, current_lap=1)
+    first_lap_alerts = service.update_frame(
+        synthetic_frame(
+            timestamp=3.0,
+            current_lap=2,
+            throttle=0,
+            last_lap_time_ms=98_000,
+            best_lap_time_ms=98_000,
+        )
+    )
+
+    assert any("Wheelspin" in alert.message for alert in first_lap_alerts)
+
+    service.alerts._last_by_key["driving_style"] = 0
+    second_lap_alerts = service.update_frame(
+        synthetic_frame(
+            timestamp=4.0,
+            current_lap=3,
+            throttle=0,
+            last_lap_time_ms=98_000,
+            best_lap_time_ms=98_000,
+        )
+    )
+
+    completed_lap = service.snapshot.lap_history[-1]
+    assert service.snapshot.driving_style.wheelspin_events == 3
+    assert completed_lap.driving_style.wheelspin_events == 0
+    assert not any(alert.category == "driving" for alert in second_lap_alerts)
+
+
+def _send_wheelspin_event(
+    service: RaceEngineerService,
+    timestamp: float,
+    *,
+    current_lap: int,
+) -> None:
+    service.update_frame(
+        synthetic_frame(
+            timestamp=timestamp,
+            current_lap=current_lap,
+            throttle=90,
+            wheel_rps={"fl": 20, "fr": 20, "rl": 26, "rr": 26},
+        )
+    )
+    service.update_frame(
+        synthetic_frame(
+            timestamp=timestamp + 0.1,
+            current_lap=current_lap,
+            throttle=0,
+            wheel_rps={"fl": 20, "fr": 20, "rl": 20, "rr": 20},
+        )
+    )
+
+
+def test_snapshot_includes_live_wheelspin_and_lockup_flags():
+    service = RaceEngineerService(AppConfig())
+
+    service.update_frame(
+        synthetic_frame(
+            timestamp=1.0,
+            throttle=90,
+            brake=0,
+            speed_kph=80.0,
+            wheel_rps={"fl": 20, "fr": 20, "rl": 26, "rr": 26},
+        )
+    )
+
+    assert service.snapshot.wheelspin_active is True
+    assert service.snapshot.lockup_active is False
+    assert service.snapshot.driving_style.wheelspin_events == 1
+
+    service.update_frame(
+        synthetic_frame(
+            timestamp=2.0,
+            throttle=0,
+            brake=200,
+            speed_kph=80.0,
+            wheel_rps={"fl": 20, "fr": 20, "rl": 20, "rr": 5},
+        )
+    )
+
+    assert service.snapshot.wheelspin_active is False
+    assert service.snapshot.lockup_active is True
+    assert service.snapshot.driving_style.lockup_events == 1
+
+
+def test_completed_lap_includes_per_lap_tc_and_asm_counts():
+    service = RaceEngineerService(AppConfig())
+    service.update_frame(
+        synthetic_frame(timestamp=1.0, current_lap=1, tcs_active=True, asm_active=True)
+    )
+    service.update_frame(
+        synthetic_frame(timestamp=1.5, current_lap=1, tcs_active=False, asm_active=False)
+    )
+    service.update_frame(
+        synthetic_frame(timestamp=2.0, current_lap=1, tcs_active=True, asm_active=True)
+    )
+    service.update_frame(
+        synthetic_frame(
+            timestamp=3.0,
+            current_lap=2,
+            tcs_active=False,
+            asm_active=False,
+            last_lap_time_ms=98_000,
+            best_lap_time_ms=98_000,
+        )
+    )
+
+    lap = service.snapshot.lap_history[-1]
+    assert lap.lap_number == 1
+    assert lap.driving_style.tcs_events == 2
+    assert lap.driving_style.asm_events == 2
+    assert service.snapshot.driving_style.tcs_events == 2
+    assert service.snapshot.driving_style.asm_events == 2
+
+
+def test_lap_one_retry_resets_tc_and_asm_counts():
+    service = RaceEngineerService(AppConfig())
+    service.update_frame(
+        synthetic_frame(
+            timestamp=1.0,
+            packet_id=100,
+            current_lap=1,
+            fuel_level=100.0,
+            time_of_day_ms=120_000,
+            tcs_active=True,
+            asm_active=True,
+        )
+    )
+    service.update_frame(
+        synthetic_frame(
+            timestamp=1.5,
+            packet_id=101,
+            current_lap=1,
+            fuel_level=100.0,
+            time_of_day_ms=121_000,
+            tcs_active=False,
+            asm_active=False,
+        )
+    )
+    service.update_frame(
+        synthetic_frame(
+            timestamp=2.0,
+            packet_id=102,
+            current_lap=1,
+            fuel_level=100.0,
+            time_of_day_ms=122_000,
+            tcs_active=True,
+            asm_active=True,
+        )
+    )
+
+    assert service.snapshot.driving_style.tcs_events == 2
+    assert service.snapshot.driving_style.asm_events == 2
+
+    service.update_frame(
+        synthetic_frame(
+            timestamp=10.0,
+            packet_id=1,
+            current_lap=1,
+            fuel_level=100.0,
+            time_of_day_ms=10_000,
+            tcs_active=False,
+            asm_active=False,
+            last_lap_time_ms=-1,
+            best_lap_time_ms=-1,
+        )
+    )
+
+    assert service.snapshot.driving_style.tcs_events == 0
+    assert service.snapshot.driving_style.asm_events == 0
+    assert service.snapshot.lap_history == []
+
+    service.update_frame(
+        synthetic_frame(
+            timestamp=11.0,
+            packet_id=2,
+            current_lap=1,
+            fuel_level=100.0,
+            time_of_day_ms=11_000,
+            tcs_active=True,
+            asm_active=True,
+        )
+    )
+
+    assert service.snapshot.driving_style.tcs_events == 1
+    assert service.snapshot.driving_style.asm_events == 1
+
+
+def test_lap_one_packet_restart_resets_all_driving_counts_even_with_old_lap_times():
+    service = RaceEngineerService(AppConfig())
+    service.update_frame(
+        synthetic_frame(
+            timestamp=1.0,
+            packet_id=100,
+            current_lap=1,
+            time_of_day_ms=120_000,
+            tcs_active=True,
+            asm_active=True,
+            wheel_rps={"fl": 20, "fr": 20, "rl": 20, "rr": 20},
+        )
+    )
+    service.update_frame(
+        synthetic_frame(
+            timestamp=1.2,
+            packet_id=101,
+            current_lap=1,
+            time_of_day_ms=121_000,
+            tcs_active=False,
+            asm_active=False,
+            wheel_rps={"fl": 20, "fr": 20, "rl": 20, "rr": 20},
+        )
+    )
+    service.update_frame(
+        synthetic_frame(
+            timestamp=1.4,
+            packet_id=102,
+            current_lap=1,
+            time_of_day_ms=122_000,
+            throttle=90,
+            wheel_rps={"fl": 20, "fr": 20, "rl": 26, "rr": 26},
+        )
+    )
+    service.update_frame(
+        synthetic_frame(
+            timestamp=1.6,
+            packet_id=103,
+            current_lap=1,
+            time_of_day_ms=123_000,
+            throttle=0,
+            wheel_rps={"fl": 20, "fr": 20, "rl": 20, "rr": 20},
+        )
+    )
+    service.update_frame(
+        synthetic_frame(
+            timestamp=1.8,
+            packet_id=104,
+            current_lap=1,
+            time_of_day_ms=124_000,
+            throttle=0,
+            brake=200,
+            wheel_rps={"fl": 2, "fr": 20, "rl": 20, "rr": 20},
+        )
+    )
+
+    assert service.snapshot.driving_style.tcs_events == 1
+    assert service.snapshot.driving_style.asm_events == 1
+    assert service.snapshot.driving_style.wheelspin_events == 1
+    assert service.snapshot.driving_style.lockup_events == 1
+
+    service.update_frame(
+        synthetic_frame(
+            timestamp=10.0,
+            packet_id=1,
+            current_lap=1,
+            time_of_day_ms=125_000,
+            speed_kph=0.0,
+            tcs_active=False,
+            asm_active=False,
+            throttle=0,
+            brake=0,
+            wheel_rps={"fl": 0, "fr": 0, "rl": 0, "rr": 0},
+            last_lap_time_ms=93_000,
+            best_lap_time_ms=92_000,
+        )
+    )
+
+    assert service.snapshot.driving_style.tcs_events == 0
+    assert service.snapshot.driving_style.asm_events == 0
+    assert service.snapshot.driving_style.wheelspin_events == 0
+    assert service.snapshot.driving_style.lockup_events == 0
+    assert service.snapshot.lap_history == []
+
+
+def test_retry_wait_transition_resets_all_driving_counts_immediately():
+    service = RaceEngineerService(AppConfig())
+    service.update_frame(
+        synthetic_frame(
+            timestamp=1.0,
+            current_lap=1,
+            tcs_active=True,
+            asm_active=True,
+            wheel_rps={"fl": 20, "fr": 20, "rl": 20, "rr": 20},
+        )
+    )
+    service.update_frame(
+        synthetic_frame(
+            timestamp=1.2,
+            current_lap=1,
+            tcs_active=False,
+            asm_active=False,
+            wheel_rps={"fl": 20, "fr": 20, "rl": 20, "rr": 20},
+        )
+    )
+    service.update_frame(
+        synthetic_frame(
+            timestamp=1.4,
+            current_lap=1,
+            throttle=90,
+            wheel_rps={"fl": 20, "fr": 20, "rl": 26, "rr": 26},
+        )
+    )
+    service.update_frame(
+        synthetic_frame(
+            timestamp=1.6,
+            current_lap=1,
+            throttle=0,
+            wheel_rps={"fl": 20, "fr": 20, "rl": 20, "rr": 20},
+        )
+    )
+    service.update_frame(
+        synthetic_frame(
+            timestamp=1.8,
+            current_lap=1,
+            throttle=0,
+            brake=200,
+            wheel_rps={"fl": 2, "fr": 20, "rl": 20, "rr": 20},
+        )
+    )
+
+    assert service.snapshot.driving_style.tcs_events == 1
+    assert service.snapshot.driving_style.asm_events == 1
+    assert service.snapshot.driving_style.wheelspin_events == 1
+    assert service.snapshot.driving_style.lockup_events == 1
+
+    service.update_frame(
+        synthetic_frame(
+            timestamp=2.0,
+            current_lap=0,
+            cars_on_track=False,
+            is_loading=True,
+            tcs_active=False,
+            asm_active=False,
+            throttle=0,
+            brake=0,
+            wheel_rps={"fl": 0, "fr": 0, "rl": 0, "rr": 0},
+        )
+    )
+
+    assert service.state.snapshot.session_phase == "loading"
+    assert service.state.snapshot.driving_style.tcs_events == 0
+    assert service.state.snapshot.driving_style.asm_events == 0
+    assert service.state.snapshot.driving_style.wheelspin_events == 0
+    assert service.state.snapshot.driving_style.lockup_events == 0
+    assert service.state.snapshot.lap_history == []
+
+
+def test_lap_one_position_alert_with_packet_id_drop_keeps_tc_and_asm_counts():
+    config = AppConfig(position_coalesce_seconds=0.0)
+    service = RaceEngineerService(config)
+    service.update_frame(
+        synthetic_frame(
+            timestamp=1.0,
+            packet_id=100,
+            current_lap=1,
+            current_position=4,
+            time_of_day_ms=120_000,
+            tcs_active=True,
+            asm_active=True,
+            last_lap_time_ms=-1,
+            best_lap_time_ms=-1,
+        )
+    )
+    service.update_frame(
+        synthetic_frame(
+            timestamp=1.5,
+            packet_id=101,
+            current_lap=1,
+            current_position=4,
+            time_of_day_ms=121_000,
+            tcs_active=False,
+            asm_active=False,
+            last_lap_time_ms=-1,
+            best_lap_time_ms=-1,
+        )
+    )
+
+    alerts = service.update_frame(
+        synthetic_frame(
+            timestamp=2.0,
+            packet_id=10,
+            current_lap=1,
+            current_position=3,
+            time_of_day_ms=122_000,
+            tcs_active=False,
+            asm_active=False,
+            last_lap_time_ms=-1,
+            best_lap_time_ms=-1,
+        )
+    )
+
+    assert any(alert.category == "position" for alert in alerts)
+    assert service.snapshot.driving_style.tcs_events == 1
+    assert service.snapshot.driving_style.asm_events == 1
+
+
+def test_lap_one_retry_after_loading_resets_tc_and_asm_counts():
+    service = RaceEngineerService(AppConfig())
+    service.update_frame(
+        synthetic_frame(timestamp=1.0, current_lap=1, tcs_active=True, asm_active=True)
+    )
+    service.update_frame(
+        synthetic_frame(timestamp=1.5, current_lap=1, tcs_active=False, asm_active=False)
+    )
+
+    assert service.snapshot.driving_style.tcs_events == 1
+    assert service.snapshot.driving_style.asm_events == 1
+
+    service.update_frame(
+        synthetic_frame(
+            timestamp=2.0,
+            current_lap=0,
+            cars_on_track=False,
+            is_loading=True,
+            tcs_active=False,
+            asm_active=False,
+        )
+    )
+    service.update_frame(
+        synthetic_frame(
+            timestamp=3.0,
+            current_lap=1,
+            cars_on_track=True,
+            tcs_active=False,
+            asm_active=False,
+            last_lap_time_ms=-1,
+            best_lap_time_ms=-1,
+        )
+    )
+
+    assert service.snapshot.driving_style.tcs_events == 0
+    assert service.snapshot.driving_style.asm_events == 0
+
+
+def test_later_lap_loading_transition_does_not_reset_driving_counts():
+    service = RaceEngineerService(AppConfig())
+    service.update_frame(
+        synthetic_frame(
+            timestamp=1.0,
+            current_lap=2,
+            tcs_active=True,
+            asm_active=True,
+        )
+    )
+    service.update_frame(
+        synthetic_frame(
+            timestamp=1.5,
+            current_lap=2,
+            tcs_active=False,
+            asm_active=False,
+        )
+    )
+
+    service.update_frame(
+        synthetic_frame(
+            timestamp=2.0,
+            current_lap=2,
+            cars_on_track=False,
+            is_loading=True,
+            tcs_active=False,
+            asm_active=False,
+        )
+    )
+
+    assert service.state.snapshot.session_phase == "loading"
+    assert service.state.snapshot.driving_style.tcs_events == 1
+    assert service.state.snapshot.driving_style.asm_events == 1
+
+
+def test_lap_one_pause_resume_does_not_reset_tc_and_asm_counts():
+    service = RaceEngineerService(AppConfig())
+    service.update_frame(
+        synthetic_frame(timestamp=1.0, current_lap=1, tcs_active=True, asm_active=True)
+    )
+    service.update_frame(
+        synthetic_frame(timestamp=1.5, current_lap=1, tcs_active=False, asm_active=False)
+    )
+
+    service.update_frame(
+        synthetic_frame(
+            timestamp=2.0,
+            current_lap=1,
+            is_paused=True,
+            tcs_active=False,
+            asm_active=False,
+            last_lap_time_ms=-1,
+            best_lap_time_ms=-1,
+        )
+    )
+    service.update_frame(
+        synthetic_frame(
+            timestamp=3.0,
+            current_lap=1,
+            tcs_active=False,
+            asm_active=False,
+            last_lap_time_ms=-1,
+            best_lap_time_ms=-1,
+        )
+    )
+
+    assert service.snapshot.driving_style.tcs_events == 1
+    assert service.snapshot.driving_style.asm_events == 1
 
 
 def test_snapshot_includes_gt_alert_rpm_range():

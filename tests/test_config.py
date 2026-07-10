@@ -36,6 +36,29 @@ PIXEL_ENV_KEYS = [
     "GT7ENG_PIXEL_DISPLAY_RPM_MAX",
 ]
 
+SECOND_DISPLAY_ENV_KEYS = [
+    "GT7ENG_SECOND_DISPLAY_ENABLED",
+    "GT7ENG_SECOND_DISPLAY_ADDRESS",
+    "GT7ENG_SECOND_DISPLAY_UPDATE_HZ",
+    "GT7ENG_SECOND_DISPLAY_BRIGHTNESS",
+    "GT7ENG_SECOND_DISPLAY_DIM_BRIGHTNESS",
+    "GT7ENG_SECOND_DISPLAY_ORIENTATION",
+    "GT7ENG_SECOND_DISPLAY_SIZE_SOURCE",
+    "GT7ENG_SECOND_DISPLAY_WIDTH",
+    "GT7ENG_SECOND_DISPLAY_HEIGHT",
+    "GT7ENG_SECOND_DISPLAY_ALERT_HOLD_SECONDS",
+    "GT7ENG_SECOND_DISPLAY_FLASH_HOLD_SECONDS",
+    "GT7ENG_SECOND_DISPLAY_COLOR_THEME",
+    "GT7ENG_SECOND_DISPLAY_LABEL_COLOR",
+    "GT7ENG_SECOND_DISPLAY_COUNT_COLOR",
+    "GT7ENG_SECOND_DISPLAY_ACTIVE_COLOR",
+    "GT7ENG_SECOND_DISPLAY_ALERT_COLOR",
+    "GT7ENG_SECOND_DISPLAY_DIM_COLOR",
+    "GT7ENG_SECOND_DISPLAY_TIRE_NORMAL_COLOR",
+    "GT7ENG_SECOND_DISPLAY_TIRE_WARM_COLOR",
+    "GT7ENG_SECOND_DISPLAY_TIRE_HOT_COLOR",
+]
+
 WIND_ENV_KEYS = [
     "GT7ENG_WIND_ENABLED",
     "GT7ENG_WIND_HA_BASE_URL",
@@ -224,6 +247,98 @@ def test_pixel_display_invalid_env_falls_back(monkeypatch):
     assert config.pixel_display.color_theme == "simdt_blue"
     assert config.pixel_display.rev_position == "bottom"
     assert config.pixel_display.fuel_safe_color == ""
+
+
+def test_second_display_env_defaults(monkeypatch):
+    for key in SECOND_DISPLAY_ENV_KEYS:
+        monkeypatch.delenv(key, raising=False)
+
+    config = AppConfig.from_env()
+
+    assert config.second_display.enabled is False
+    assert config.second_display.address == ""
+    assert config.second_display.update_hz == 10.0
+    assert config.second_display.width == 64
+    assert config.second_display.height == 64
+    assert config.second_display.size_source == "auto"
+    assert config.second_display.alert_hold_seconds == 4.0
+    assert config.second_display.flash_hold_seconds == 1.5
+    assert config.second_display.color_theme == "simdt_blue"
+    assert config.second_display.active_color == ""
+    assert config.second_display.tire_hot_color == ""
+
+
+def test_second_display_env_accepts_overrides(monkeypatch):
+    monkeypatch.setenv("GT7ENG_PIXEL_DISPLAY_COLOR_THEME", "warm_amber")
+    monkeypatch.setenv("GT7ENG_SECOND_DISPLAY_ENABLED", "true")
+    monkeypatch.setenv("GT7ENG_SECOND_DISPLAY_ADDRESS", "coach-device")
+    monkeypatch.setenv("GT7ENG_SECOND_DISPLAY_UPDATE_HZ", "12")
+    monkeypatch.setenv("GT7ENG_SECOND_DISPLAY_BRIGHTNESS", "41")
+    monkeypatch.setenv("GT7ENG_SECOND_DISPLAY_DIM_BRIGHTNESS", "9")
+    monkeypatch.setenv("GT7ENG_SECOND_DISPLAY_ORIENTATION", "2")
+    monkeypatch.setenv("GT7ENG_SECOND_DISPLAY_WIDTH", "32")
+    monkeypatch.setenv("GT7ENG_SECOND_DISPLAY_HEIGHT", "32")
+    monkeypatch.setenv("GT7ENG_SECOND_DISPLAY_SIZE_SOURCE", "config")
+    monkeypatch.setenv("GT7ENG_SECOND_DISPLAY_ALERT_HOLD_SECONDS", "3.5")
+    monkeypatch.setenv("GT7ENG_SECOND_DISPLAY_FLASH_HOLD_SECONDS", "1.2")
+    monkeypatch.setenv("GT7ENG_SECOND_DISPLAY_COLOR_THEME", "warm_amber")
+    monkeypatch.setenv("GT7ENG_SECOND_DISPLAY_ACTIVE_COLOR", "#ffee00")
+    monkeypatch.setenv("GT7ENG_SECOND_DISPLAY_TIRE_HOT_COLOR", "ff0000")
+
+    config = AppConfig.from_env()
+
+    assert config.second_display.enabled is True
+    assert config.second_display.address == "coach-device"
+    assert config.second_display.update_hz == 12.0
+    assert config.second_display.brightness == 41
+    assert config.second_display.dim_brightness == 9
+    assert config.second_display.orientation == 2
+    assert config.second_display.width == 32
+    assert config.second_display.height == 32
+    assert config.second_display.size_source == "config"
+    assert config.second_display.alert_hold_seconds == 3.5
+    assert config.second_display.flash_hold_seconds == 1.2
+    assert config.second_display.color_theme == "warm_amber"
+    assert config.second_display.active_color == "ffee00"
+    assert config.second_display.tire_hot_color == "ff0000"
+
+
+def test_second_display_theme_follows_primary_theme(monkeypatch):
+    monkeypatch.setenv("GT7ENG_PIXEL_DISPLAY_COLOR_THEME", "warm_amber")
+    monkeypatch.setenv("GT7ENG_SECOND_DISPLAY_COLOR_THEME", "night_vision")
+
+    config = AppConfig.from_env()
+
+    assert config.pixel_display.color_theme == "warm_amber"
+    assert config.second_display.color_theme == "warm_amber"
+
+
+def test_second_display_invalid_env_falls_back(monkeypatch):
+    monkeypatch.setenv("GT7ENG_SECOND_DISPLAY_UPDATE_HZ", "999")
+    monkeypatch.setenv("GT7ENG_SECOND_DISPLAY_BRIGHTNESS", "101")
+    monkeypatch.setenv("GT7ENG_SECOND_DISPLAY_DIM_BRIGHTNESS", "-1")
+    monkeypatch.setenv("GT7ENG_SECOND_DISPLAY_ORIENTATION", "8")
+    monkeypatch.setenv("GT7ENG_SECOND_DISPLAY_WIDTH", "2")
+    monkeypatch.setenv("GT7ENG_SECOND_DISPLAY_HEIGHT", "9999")
+    monkeypatch.setenv("GT7ENG_SECOND_DISPLAY_SIZE_SOURCE", "manual")
+    monkeypatch.setenv("GT7ENG_SECOND_DISPLAY_ALERT_HOLD_SECONDS", "99")
+    monkeypatch.setenv("GT7ENG_SECOND_DISPLAY_FLASH_HOLD_SECONDS", "0")
+    monkeypatch.setenv("GT7ENG_SECOND_DISPLAY_COLOR_THEME", "purple")
+    monkeypatch.setenv("GT7ENG_SECOND_DISPLAY_ACTIVE_COLOR", "yellow")
+
+    config = AppConfig.from_env()
+
+    assert config.second_display.update_hz == 10.0
+    assert config.second_display.brightness == 60
+    assert config.second_display.dim_brightness == 12
+    assert config.second_display.orientation == 0
+    assert config.second_display.width == 64
+    assert config.second_display.height == 64
+    assert config.second_display.size_source == "auto"
+    assert config.second_display.alert_hold_seconds == 4.0
+    assert config.second_display.flash_hold_seconds == 1.5
+    assert config.second_display.color_theme == "simdt_blue"
+    assert config.second_display.active_color == ""
 
 
 def test_home_assistant_wind_env_defaults(monkeypatch):

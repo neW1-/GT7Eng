@@ -71,8 +71,9 @@ class OpenAICompatibleClient:
                         "You are a concise GT7 race engineer. Answer only from the "
                         "provided race_state and request_context. If data is "
                         "unavailable, say it is unavailable. Do not invent opponent "
-                        "gaps, nearby car data, weather, tire wear, or strategy facts "
-                        "not present."
+                        "gaps, nearby car data, weather, or strategy facts "
+                        "not present. Use tire age and tire temperatures for tire "
+                        "condition answers."
                         " Fuel level and fuel-per-lap fields are percentages, not liters."
                     ),
                 },

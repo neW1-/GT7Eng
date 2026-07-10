@@ -14,7 +14,7 @@ Local Gran Turismo 7 race engineer for macOS. It auto-discovers the PS5 via `gt-
 - [x] Replay fixture and automated tests for the core race logic.
 - [x] Optional Discord audio-to-STT path with deterministic command handling.
 - [x] Optional Piper/radio-style TTS provider with `say` fallback.
-- [x] Session phase, incident, tire-wear, and driving-style monitors.
+- [x] Session phase, spin, tire, and driving-style monitors.
 - [x] Live PS5 auto-discovery, HUD, and on-track GT7 telemetry smoke test.
 - [x] Live Discord voice join, radio-check playback, and proactive position-alert playback.
 - [x] Live Discord driver-audio receive, `tiny.en` STT, and spoken position Q&A round trip.
@@ -34,6 +34,8 @@ Local Gran Turismo 7 race engineer for macOS. It auto-discovers the PS5 via `gt-
 - [x] Local-only HUD control plane for preset, category verbosity, voice mode, mute, STT settings, Discord bridge control/status, and pixel display configuration.
 - [x] HUD settings changes persist back to `.env` while keeping Discord tokens, IDs, and API secrets out of editable forms.
 - [x] Software pixel-display preview endpoint for hardware-free HUD tuning.
+- [x] Optional second BLE coaching display for TC/ASM/WS/LCK, lap/fuel pages, tire pages, and compact alerts.
+- [x] Tire-age tracking with per-lap voice/display updates and pit-service reset detection.
 - [x] Optional Home Assistant wind simulation maps GT7 speed to a discrete fan level.
 
 ## Todo
@@ -43,7 +45,7 @@ Local Gran Turismo 7 race engineer for macOS. It auto-discovers the PS5 via `gt-
 - [x] Add Piper/radio-style TTS while keeping macOS `say` as fallback.
 - [x] Add race lifecycle handling for loading/menu/paused/finished states.
 - [x] Normalize richer telemetry fields for motion, tire radius, and driving aids.
-- [x] Add lap delta, final-lap, tire-wear, incident, and driving-style monitors.
+- [x] Add lap delta, final-lap, tire-age, spin, and driving-style monitors.
 - [x] Add HUD and `doctor` status for STT, TTS, session phase, and Discord receive health.
 - [x] Wire Discord received audio into STT/VAD instead of only monitoring driver audio packets.
 - [x] Add wake-phrase detection for `wake_phrase` mode.
@@ -62,11 +64,12 @@ Local Gran Turismo 7 race engineer for macOS. It auto-discovers the PS5 via `gt-
 - [x] Add LLM intent repair for noisy Discord STT transcripts.
 - [x] Add short-turn follow-up memory for recent deterministic race answers.
 - [x] Throttle spoken telemetry-stale alerts and keep telemetry-connected alerts silent to avoid voice loops during packet flaps.
-- [x] Add richer incident/coaching monitors for lockups, wheelspin, spins, and impact-like events.
+- [x] Add richer coaching monitors for lockups, wheelspin, spins, and driver-assist events.
 - [ ] Add off-track detection if GT7 exposes a reliable signal.
 - [x] Add HUD controls for preset, category verbosity, voice mode, mute, and STT status.
 - [x] Add HUD Discord bridge status plus local-only start/stop/restart controls.
 - [x] Add HUD pixel display start/stop/config controls and renderer preview.
+- [x] Add second BLE coaching display controls, preview, and `.env` persistence.
 - [x] Add optional Home Assistant wind simulation using the existing rig fan level entity.
 - [ ] Add persistent session/debrief output beyond JSONL capture.
 - [ ] Package a macOS-friendly launcher once the live path is stable.
@@ -103,6 +106,10 @@ Open `http://localhost:8001` for the HUD. Live GT7 telemetry requires GT7 teleme
 HUD control note: telemetry/status remains visible over LAN, but write actions are local-only. Open the HUD from `http://127.0.0.1:8001` or `http://localhost:8001` on the Mac to change preset, category verbosity, voice mode, mute, STT, Discord bridge, pixel display, or wind settings. Local HUD changes are persisted to `.env`; `DISCORD_STT_ENABLED` is also mirrored into `bridge/discord/.env`. Discord tokens, IDs, Home Assistant tokens, and API keys are not exposed in HUD forms.
 
 Fuel note: GT7 fuel is treated as percentage. `fuel_level=100.0` means a full tank, not 100 liters; fuel-per-lap is percentage points consumed per lap.
+
+Tire age note: GT7Eng tracks tire age as completed laps on the current inferred tire set. Tire age starts at `0` on lap 1 and becomes `1` when lap 1 is completed. The age resets when fuel rises by at least `1` percentage point versus the lowest fuel seen in the current stint, or when at least two tire radii jump upward by at least `1.5%`. GT7 telemetry used here does not expose pit lane, tire compound, or an explicit tire-change flag, so these are inferred pit-service signals.
+
+Pit service note: the engineer stores the most recent inferred pit service and can answer “how long ago did I pit?” in completed laps since service. Impact/hit alerts are intentionally disabled because they were noisy and low value; spin alerts remain enabled.
 
 Fuel strategy note: the HUD separates current-stint range from finish margin:
 
@@ -169,6 +176,47 @@ gt7eng pixel-preview /private/tmp/gt7eng-pixel-preview.png --theme warm_amber --
 ```
 
 The localhost HUD can also start/stop the pixel display, edit display settings, persist them to `.env`, and show a small software preview image before using BLE hardware.
+
+## Second BLE Coaching Display
+
+GT7Eng can drive a second iPixel Color-compatible BLE matrix as a coaching display while the primary pixel display stays focused on gear, revs, shift, and optional fuel edge bar. The second display uses the same `pypixelcolor` optional dependency and has its own BLE address, update rate, brightness, sizing, status, preview, and start/stop controls.
+
+Default page:
+
+- Top area: `TC` and `ASM` with session-total event counts.
+- Bottom area: `WS` and `LCK` with session-total event counts.
+- Live interventions flash briefly, including held flashes for short events so they remain visible at BLE refresh rates.
+- Large counts stay readable beyond `99`; thousands are compacted only when needed.
+
+Lap-completion pages:
+
+- Lap page: `L2/5`, lap time, and delta versus the previous lap. Faster/equal deltas use the active theme's green; slower deltas use red.
+- Fuel page: `FUEL`, fuel remaining, and fuel used on the completed lap. Values are GT7 fuel percentage points but omit the `%` glyph for matrix readability. Fuel used is green when it is less than or equal to the previous lap's usage, red when it is higher, and neutral when no previous-lap comparison exists.
+- Tire-age page: current tire age as a center number, with `FL`, `FR`, `RL`, and `RR` tire temperature blocks in the display corners. This page appears after the lap and lap-fuel pages when tire verbosity is `balanced` or higher.
+- Driving coaching pages: lap-end `TC`, `ASM`, `WS`, or `LCK` alerts use the completed lap's counts, while the default page continues to show session totals.
+
+Other alert overrides:
+
+- Position: `POS` plus `P current/total` when available.
+- Tires: `FL FR / RL RR` blocks colored by current tire temperature.
+- Fuel/pit, spin incident, and telemetry-stale alerts get compact pages. Pit-service alerts are inferred from refuel or tire-change signals.
+- Oil/water car-health pages are intentionally not shown on the second display.
+
+Enable it in `.env`:
+
+```bash
+GT7ENG_SECOND_DISPLAY_ENABLED=true
+GT7ENG_SECOND_DISPLAY_ADDRESS=your-second-device-address-or-corebluetooth-uuid
+GT7ENG_SECOND_DISPLAY_UPDATE_HZ=10
+GT7ENG_SECOND_DISPLAY_BRIGHTNESS=60
+GT7ENG_SECOND_DISPLAY_SIZE_SOURCE=auto
+GT7ENG_SECOND_DISPLAY_WIDTH=64
+GT7ENG_SECOND_DISPLAY_HEIGHT=64
+GT7ENG_SECOND_DISPLAY_ALERT_HOLD_SECONDS=4
+GT7ENG_SECOND_DISPLAY_FLASH_HOLD_SECONDS=1.5
+```
+
+The second display theme is kept in sync with `GT7ENG_PIXEL_DISPLAY_COLOR_THEME`, including when the HUD changes the primary pixel display theme. Change the main pixel theme to change both displays. Custom second-display color overrides exist for fine tuning, but the theme name is intentionally synchronized.
 
 ## Home Assistant Wind Simulation
 

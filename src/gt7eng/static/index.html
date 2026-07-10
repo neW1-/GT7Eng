@@ -21,6 +21,7 @@
           <span id="stt-status">stt off</span>
           <span id="tts-status">tts</span>
           <span id="pixel-status">pixel off</span>
+          <span id="second-display-status">coach off</span>
           <span id="wind-status">wind off</span>
         </div>
       </section>
@@ -82,7 +83,7 @@
           <dl>
             <div><dt>Hottest</dt><dd id="tire-hot">--</dd></div>
             <div><dt>Spread</dt><dd id="tire-spread">--</dd></div>
-            <div><dt>Wear Est.</dt><dd id="tire-wear">--</dd></div>
+            <div><dt>Age</dt><dd id="tire-age">--</dd></div>
           </dl>
         </article>
 
@@ -193,6 +194,39 @@
             </div>
           </form>
           <img id="pixel-preview" class="pixel-preview" alt="Pixel display preview" />
+        </article>
+
+        <article class="panel wide">
+          <h2>Second Display</h2>
+          <form id="second-display-form" class="control-form stacked">
+            <div class="control-grid">
+              <label class="check-row"><input id="second-display-enabled-control" type="checkbox" data-control /> Enabled</label>
+              <label>Address<input id="second-display-address-control" type="text" data-control /></label>
+              <label>Brightness<input id="second-display-brightness-control" type="number" min="0" max="100" data-control /></label>
+              <label>Dim<input id="second-display-dim-control" type="number" min="0" max="100" data-control /></label>
+              <label>Orientation<input id="second-display-orientation-control" type="number" min="0" max="3" data-control /></label>
+              <label>Update Hz<input id="second-display-update-control" type="number" min="1" max="30" step="0.5" data-control /></label>
+              <label>Size Source<select id="second-display-size-source-control" data-control></select></label>
+              <label>Width<input id="second-display-width-control" type="number" min="8" max="512" data-control /></label>
+              <label>Height<input id="second-display-height-control" type="number" min="8" max="512" data-control /></label>
+              <label>Alert Hold<input id="second-display-alert-hold-control" type="number" min="0.5" max="30" step="0.1" data-control /></label>
+              <label>Flash Hold<input id="second-display-flash-hold-control" type="number" min="0.1" max="10" step="0.1" data-control /></label>
+              <label>Label Color<input id="second-display-label-color-control" type="text" placeholder="cfe0e5" data-control /></label>
+              <label>Count Color<input id="second-display-count-color-control" type="text" placeholder="ffffff" data-control /></label>
+              <label>Active Color<input id="second-display-active-color-control" type="text" placeholder="ffee00" data-control /></label>
+              <label>Alert Color<input id="second-display-alert-color-control" type="text" placeholder="ff2d2d" data-control /></label>
+              <label>Dim Color<input id="second-display-dim-color-control" type="text" placeholder="203038" data-control /></label>
+              <label>Tire Normal<input id="second-display-tire-normal-control" type="text" placeholder="26d8ff" data-control /></label>
+              <label>Tire Warm<input id="second-display-tire-warm-control" type="text" placeholder="ffee00" data-control /></label>
+              <label>Tire Hot<input id="second-display-tire-hot-control" type="text" placeholder="ff2d2d" data-control /></label>
+            </div>
+            <div class="button-row">
+              <button type="submit" data-control>Save</button>
+              <button id="second-display-start" type="button" data-control>Start</button>
+              <button id="second-display-stop" type="button" data-control>Stop</button>
+            </div>
+          </form>
+          <img id="second-display-preview" class="pixel-preview" alt="Second display preview" />
         </article>
 
         <article class="panel wide">

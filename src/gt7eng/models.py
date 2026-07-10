@@ -11,6 +11,7 @@ AlertPriority = Literal["critical", "important", "info"]
 SessionPhase = Literal["unknown", "menu", "loading", "paused", "racing", "finished", "stale"]
 RaceMode = Literal["unknown", "lap", "timed"]
 TimerMode = Literal["unknown", "app_elapsed"]
+PitServiceReason = Literal["refuel", "tire_radius_reset"]
 
 
 @dataclass(slots=True)
@@ -221,10 +222,22 @@ class LapRecord:
     lap_time_ms: int | None
     fuel_used: float | None
     completed_at: float
+    tire_age_laps: int | None = None
+    driving_style: DrivingStyleStats = field(default_factory=DrivingStyleStats)
 
     @property
     def lap_time(self) -> str:
         return format_lap_time(self.lap_time_ms)
+
+
+@dataclass(slots=True)
+class PitServiceRecord:
+    detected_at: float
+    lap_number: int | None
+    completed_lap_count: int
+    laps_since_pit: int
+    reason: PitServiceReason
+    fuel_level: float | None = None
 
 
 @dataclass(slots=True)
@@ -263,7 +276,10 @@ class RaceSnapshot:
     suggested_gear: int | None = None
     tire_temps: WheelValues = field(default_factory=WheelValues)
     tire_radius: WheelValues = field(default_factory=WheelValues)
-    tire_wear_percent: WheelValues = field(default_factory=WheelValues)
+    tire_age_laps: int | None = None
+    tire_stint_start_lap: int | None = None
+    last_pit_service: PitServiceRecord | None = None
+    laps_since_pit_service: int | None = None
     oil_temp: float | None = None
     water_temp: float | None = None
     track_id: int | None = None
@@ -272,6 +288,8 @@ class RaceSnapshot:
     asm_active: bool = False
     hand_brake_active: bool = False
     rev_limit: bool = False
+    wheelspin_active: bool = False
+    lockup_active: bool = False
     incident_status: str | None = None
     driving_style: DrivingStyleStats = field(default_factory=DrivingStyleStats)
     lap_history: list[LapRecord] = field(default_factory=list)
@@ -298,6 +316,8 @@ class StateUpdate:
     position_changed: tuple[int | None, int] | None = None
     incident_detected: str | None = None
     driving_event: str | None = None
+    tire_reset_detected: bool = False
+    pit_service: PitServiceRecord | None = None
 
 
 @dataclass(slots=True)

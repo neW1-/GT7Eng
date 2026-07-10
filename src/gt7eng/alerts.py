@@ -19,7 +19,6 @@ class AlertManager:
         self._last_by_key: dict[str, float] = {}
         self._system_connected: bool | None = None
         self._fuel_thresholds_announced: set[int] = set()
-        self._tire_wear_stage = 0
         self._pending_position_start: int | None = None
         self._pending_position_latest: int | None = None
         self._pending_position_changed_at: float | None = None
@@ -31,11 +30,13 @@ class AlertManager:
         if update.snapshot.session_phase == "racing":
             self._finish_announced = False
         if update.snapshot.session_phase in {"menu", "loading", "paused", "stale"}:
-            return []
+            return self._pit_service_alerts(update)
         alerts: list[Alert] = []
         alerts.extend(self._position_alerts(update))
         alerts.extend(self._lap_alerts(update))
         alerts.extend(self._fuel_alerts(update.snapshot, completed=update.completed_lap is not None))
+        alerts.extend(self._tire_age_alerts(update))
+        alerts.extend(self._pit_service_alerts(update))
         alerts.extend(self._tire_alerts(update.snapshot))
         alerts.extend(self._incident_alerts(update))
         alerts.extend(self._driving_alerts(update))
@@ -235,6 +236,37 @@ class AlertManager:
                 return [self._alert("fuel", priority, f"Fuel below {threshold} percent.")]
         return []
 
+    def _tire_age_alerts(self, update: StateUpdate) -> list[Alert]:
+        if update.completed_lap is None:
+            return []
+        if not self.config.category_enabled("tires", "balanced"):
+            return []
+        age = update.completed_lap.tire_age_laps
+        if age is None:
+            return []
+        return [
+            self._alert(
+                "tires",
+                "info",
+                f"Tire age {plural(age, 'lap')}.",
+            )
+        ]
+
+    def _pit_service_alerts(self, update: StateUpdate) -> list[Alert]:
+        if update.pit_service is None:
+            return []
+        if not self.config.category_enabled("pit", "balanced"):
+            return []
+        if not self._allowed("pit_service", 30):
+            return []
+        return [
+            self._alert(
+                "pit",
+                "info",
+                "Pit service detected. Tire age reset.",
+            )
+        ]
+
     def _tire_alerts(self, snapshot: RaceSnapshot) -> list[Alert]:
         if not self.config.category_enabled("tires", "critical"):
             return []
@@ -250,57 +282,38 @@ class AlertManager:
             and self._allowed("tire_spread", 45)
         ):
             alerts.append(self._alert("tires", "info", "Tire temperature spread is building."))
-        wear = snapshot.tire_wear_percent.max()
-        if wear is not None and self.config.category_enabled("tires", "balanced"):
-            stage = 0
-            if wear >= 40:
-                stage = 3
-            elif wear >= 25:
-                stage = 2
-            elif wear >= 15:
-                stage = 1
-            if stage > self._tire_wear_stage and self._allowed("tire_wear", 90):
-                self._tire_wear_stage = stage
-                alerts.append(
-                    self._alert(
-                        "tires",
-                        "important" if stage >= 2 else "info",
-                        f"Estimated tire wear is {wear:.0f} percent on the worst corner.",
-                    )
-                )
         return alerts
 
     def _incident_alerts(self, update: StateUpdate) -> list[Alert]:
-        if not update.incident_detected:
+        if update.incident_detected != "spin":
             return []
         if not self.config.category_enabled("incident", "balanced"):
             return []
         if not self._allowed(f"incident_{update.incident_detected}", 120):
             return []
-        message = (
-            "Possible spin detected. Get it settled."
-            if update.incident_detected == "spin"
-            else "Possible impact detected. Check the car."
-        )
-        return [self._alert("incident", "important", message)]
+        return [
+            self._alert("incident", "important", "Possible spin detected. Get it settled.")
+        ]
 
     def _driving_alerts(self, update: StateUpdate) -> list[Alert]:
         if update.completed_lap is None:
             return []
         if not self.config.category_enabled("driving", "detailed"):
             return []
+        stats = update.completed_lap.driving_style
+        if stats.lockup_events >= 2:
+            message = "Brake lockups are building. Ease peak brake pressure."
+        elif stats.wheelspin_events >= 2:
+            message = "Wheelspin is costing traction. Squeeze the throttle on exit."
+        elif stats.tcs_events >= 3:
+            message = "Traction control is working often. Smooth the throttle inputs."
+        elif stats.asm_events >= 3:
+            message = "ASM is intervening often. Keep the car straighter on entry."
+        else:
+            return []
         if not self._allowed("driving_style", 120):
             return []
-        stats = update.snapshot.driving_style
-        if stats.lockup_events >= 2:
-            return [self._alert("driving", "info", "Brake lockups are building. Ease peak brake pressure.")]
-        if stats.wheelspin_events >= 2:
-            return [self._alert("driving", "info", "Wheelspin is costing traction. Squeeze the throttle on exit.")]
-        if stats.tcs_events >= 3:
-            return [self._alert("driving", "info", "Traction control is working often. Smooth the throttle inputs.")]
-        if stats.asm_events >= 3:
-            return [self._alert("driving", "info", "ASM is intervening often. Keep the car straighter on entry.")]
-        return []
+        return [self._alert("driving", "info", message)]
 
     def _car_alerts(self, snapshot: RaceSnapshot) -> list[Alert]:
         if not self.config.category_enabled("car", "critical"):
