@@ -199,7 +199,7 @@ Other alert overrides:
 
 - Position: `POS` plus `P current/total` when available.
 - Tires: `FL FR / RL RR` blocks colored by current tire temperature.
-- Fuel/pit, spin incident, and telemetry-stale alerts get compact pages. Pit-service alerts are inferred from refuel or tire-change signals.
+- Fuel/pit, incident, and telemetry-stale alerts get compact pages. Pit-service alerts are inferred from refuel or tire-change signals.
 - Oil/water car-health pages are intentionally not shown on the second display.
 
 Enable it in `.env`:

@@ -1141,10 +1141,8 @@ def test_tire_radius_drop_does_not_emit_incident_alert():
         )
     )
 
-    candidate_messages = [alert.message for alert in candidate_alerts]
-    confirmed_messages = [alert.message for alert in confirmed_alerts]
-    assert not any("Possible impact" in message for message in candidate_messages)
-    assert not any("Possible impact" in message for message in confirmed_messages)
+    assert not any("Possible impact" in alert.message for alert in candidate_alerts)
+    assert not any("Possible impact" in alert.message for alert in confirmed_alerts)
 
 
 def test_pit_transition_does_not_emit_impact_alert():
