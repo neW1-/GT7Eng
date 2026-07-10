@@ -8,6 +8,7 @@ import pytest
 from gt7eng.config import AppConfig, SecondDisplayConfig
 from gt7eng.models import Alert, DrivingStyleStats, LapRecord, RaceSnapshot, WheelValues
 from gt7eng.second_display import (
+    ActiveFlags,
     SecondDisplayManager,
     SecondDisplayRenderer,
     _alert_category_label,
@@ -19,6 +20,7 @@ from gt7eng.second_display import (
     _lap_time_text,
     _previous_lap_delta_text,
     _tire_age_text,
+    palette_from_config,
 )
 from gt7eng.service import RaceEngineerService
 from gt7eng.telemetry import synthetic_frame
@@ -172,6 +174,42 @@ def test_renderer_tire_age_alert_shows_age_and_temperature_colors():
     assert frame.pixel(0, 31) == (255, 0, 0)
     assert frame.pixel(31, 31) == (16, 16, 16)
     assert frame.pixel(16, 16) == renderer.palette.count
+
+
+def test_tire_temperature_colors_are_theme_independent():
+    expected = {
+        "tire_normal": (0, 255, 0),
+        "tire_warm": (255, 238, 0),
+        "tire_hot": (255, 0, 0),
+    }
+
+    for theme in ("simdt_blue", "night_vision", "carbon_red", "fuji_sunset"):
+        palette = palette_from_config(SecondDisplayConfig(color_theme=theme))
+        assert palette.tire_normal == expected["tire_normal"]
+        assert palette.tire_warm == expected["tire_warm"]
+        assert palette.tire_hot == expected["tire_hot"]
+
+
+def test_carbon_red_tire_age_alert_renders_normal_temps_green():
+    renderer = SecondDisplayRenderer(
+        SecondDisplayConfig(color_theme="carbon_red"),
+        width=32,
+        height=32,
+    )
+    snapshot = racing_snapshot(
+        tire_age_laps=2,
+        tire_temps=WheelValues(fl=90.0, fr=91.0, rl=92.0, rr=93.0),
+    )
+
+    frame = renderer.render_snapshot(
+        snapshot,
+        alert=alert("tires", "Tire age 2 laps."),
+    )
+
+    assert frame.pixel(0, 0) == (0, 255, 0)
+    assert frame.pixel(31, 0) == (0, 255, 0)
+    assert frame.pixel(0, 31) == (0, 255, 0)
+    assert frame.pixel(31, 31) == (0, 255, 0)
 
 
 def test_renderer_lap_alert_shows_lap_time_and_previous_lap_delta():
@@ -417,6 +455,47 @@ def test_alert_helpers_show_specific_values_instead_of_generic_alrt():
     assert _alert_category_label(alert("voice", "Command ignored.")) == "VOIC"
 
 
+def test_manager_display_counts_follow_snapshot_reset():
+    manager = SecondDisplayManager(SecondDisplayConfig(enabled=True))
+    manager.publish(
+        racing_snapshot(
+            driving_style=DrivingStyleStats(
+                tcs_events=12,
+                asm_events=9,
+                wheelspin_events=3,
+                lockup_events=2,
+            )
+        )
+    )
+
+    assert manager.status()["display"]["counts"] == {
+        "tc": 12,
+        "asm": 9,
+        "ws": 3,
+        "lck": 2,
+    }
+
+    manager.publish(
+        racing_snapshot(
+            driving_style=DrivingStyleStats(
+                tcs_events=0,
+                asm_events=0,
+                wheelspin_events=0,
+                lockup_events=0,
+            )
+        )
+    )
+
+    assert manager.status()["display"]["counts"] == {
+        "tc": 0,
+        "asm": 0,
+        "ws": 0,
+        "lck": 0,
+    }
+    flags = manager._current_active_flags(manager._current_snapshot(), time.monotonic())
+    assert flags == ActiveFlags()
+
+
 def test_fuel_alert_used_value_handles_missing_lap_history():
     assert _fuel_used_text(racing_snapshot(fuel_level=12.3)) == "--"
 
@@ -475,6 +554,44 @@ def test_service_queues_lap_fuel_and_tire_age_pages_after_each_completed_lap():
     service.second_display._active_alert_until = 0.0
 
     assert service.second_display._current_alert(time.monotonic()).category == "fuel_lap"
+    service.second_display._active_alert_until = 0.0
+
+    next_alert = service.second_display._current_alert(time.monotonic())
+    assert next_alert.category == "tires"
+    assert next_alert.message == "Tire age 1 lap."
+
+
+def test_service_skips_lap_fuel_page_when_fuel_stays_full():
+    config = AppConfig(second_display=SecondDisplayConfig(enabled=True))
+    config.verbosity["fuel"] = "off"
+    service = RaceEngineerService(config)
+
+    service.update_frame(
+        synthetic_frame(
+            timestamp=1.0,
+            current_lap=1,
+            total_laps=5,
+            fuel_level=100.0,
+            last_lap_time_ms=-1,
+            best_lap_time_ms=-1,
+        )
+    )
+    alerts = service.update_frame(
+        synthetic_frame(
+            timestamp=2.0,
+            current_lap=2,
+            total_laps=5,
+            fuel_level=100.0,
+            last_lap_time_ms=90_000,
+            best_lap_time_ms=90_000,
+        )
+    )
+
+    assert [alert.category for alert in alerts] == ["lap", "tires"]
+    assert service.snapshot.lap_history[-1].fuel_used == 0.0
+    assert service.second_display.status()["alert"]["category"] == "lap"
+    assert service.second_display.status()["alert"]["queued"] == 1
+
     service.second_display._active_alert_until = 0.0
 
     next_alert = service.second_display._current_alert(time.monotonic())

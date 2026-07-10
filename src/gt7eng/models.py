@@ -11,7 +11,7 @@ AlertPriority = Literal["critical", "important", "info"]
 SessionPhase = Literal["unknown", "menu", "loading", "paused", "racing", "finished", "stale"]
 RaceMode = Literal["unknown", "lap", "timed"]
 TimerMode = Literal["unknown", "app_elapsed"]
-PitServiceReason = Literal["refuel", "tire_replacement", "tire_radius_reset"]
+PitServiceReason = Literal["refuel", "tire_radius_reset"]
 
 
 @dataclass(slots=True)
@@ -276,7 +276,6 @@ class RaceSnapshot:
     suggested_gear: int | None = None
     tire_temps: WheelValues = field(default_factory=WheelValues)
     tire_radius: WheelValues = field(default_factory=WheelValues)
-    tire_wear_percent: WheelValues = field(default_factory=WheelValues)
     tire_age_laps: int | None = None
     tire_stint_start_lap: int | None = None
     last_pit_service: PitServiceRecord | None = None

@@ -54,7 +54,6 @@ def test_status_reports_audio_engines():
     assert payload["config"]["second_display"]["size_source"] == "auto"
     assert payload["config"]["second_display"]["alert_hold_seconds"] == 4.0
     assert payload["config"]["second_display"]["flash_hold_seconds"] == 1.5
-    assert payload["options"]["second_display"]["color_themes"] == list(PIXEL_COLOR_THEMES)
     assert payload["wind"]["enabled"] is False
     assert payload["wind"]["ha_entity_id"] == "number.zhimi_cpa4_cee4_favorite_level"
     assert payload["config"]["wind"]["enabled"] is False
@@ -89,6 +88,7 @@ def test_hud_pixel_status_uses_runtime_or_config_enabled_state():
     assert "coach wait" in app_js
     assert "coach warn" in app_js
     assert "suggestedGear.textContent = snap.suggested_gear" in app_js
+    assert "tireAge.textContent = lapsText(snap.tire_age_laps)" in app_js
     assert "control_allowed" in app_js
     assert "/api/control/settings" in app_js
     assert "/api/control/pixel-display" in app_js
@@ -101,10 +101,13 @@ def test_hud_pixel_status_uses_runtime_or_config_enabled_state():
     assert "wind warn" in app_js
     assert "ha_token" not in app_js
     assert 'id="suggested-gear"' in index_html
+    assert 'id="tire-age"' in index_html
     assert 'id="settings-form"' in index_html
     assert 'id="pixel-form"' in index_html
     assert 'id="second-display-form"' in index_html
     assert 'id="second-display-status"' in index_html
+    assert "second-display-theme-control" not in index_html
+    assert "second-display-theme-control" not in app_js
     assert 'id="wind-status"' in index_html
     assert 'id="wind-form"' in index_html
     assert 'id="wind-start"' in index_html

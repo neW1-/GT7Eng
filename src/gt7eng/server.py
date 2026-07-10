@@ -271,8 +271,6 @@ def _apply_second_display_payload(
         set_value("alert_hold_seconds", _float_range_value(payload["alert_hold_seconds"], "alert_hold_seconds", 0.5, 30.0))
     if "flash_hold_seconds" in payload:
         set_value("flash_hold_seconds", _float_range_value(payload["flash_hold_seconds"], "flash_hold_seconds", 0.1, 10.0))
-    if "color_theme" in payload:
-        set_value("color_theme", _enum_value(payload["color_theme"], list(PIXEL_COLOR_THEMES), "color_theme"))
     for color_name in [
         "label_color",
         "count_color",
@@ -461,7 +459,6 @@ def create_app(
             },
             "second_display": {
                 "size_sources": ["auto", "config"],
-                "color_themes": list(PIXEL_COLOR_THEMES),
             },
         }
 
@@ -608,7 +605,6 @@ def create_app(
 
         if updates:
             if "GT7ENG_PIXEL_DISPLAY_COLOR_THEME" in updates:
-                app_config.second_display.color_theme = app_config.pixel_display.color_theme
                 updates["GT7ENG_SECOND_DISPLAY_COLOR_THEME"] = (
                     app_config.pixel_display.color_theme
                 )

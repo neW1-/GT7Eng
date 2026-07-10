@@ -269,6 +269,7 @@ def test_second_display_env_defaults(monkeypatch):
 
 
 def test_second_display_env_accepts_overrides(monkeypatch):
+    monkeypatch.setenv("GT7ENG_PIXEL_DISPLAY_COLOR_THEME", "warm_amber")
     monkeypatch.setenv("GT7ENG_SECOND_DISPLAY_ENABLED", "true")
     monkeypatch.setenv("GT7ENG_SECOND_DISPLAY_ADDRESS", "coach-device")
     monkeypatch.setenv("GT7ENG_SECOND_DISPLAY_UPDATE_HZ", "12")
@@ -300,6 +301,16 @@ def test_second_display_env_accepts_overrides(monkeypatch):
     assert config.second_display.color_theme == "warm_amber"
     assert config.second_display.active_color == "ffee00"
     assert config.second_display.tire_hot_color == "ff0000"
+
+
+def test_second_display_theme_follows_primary_theme(monkeypatch):
+    monkeypatch.setenv("GT7ENG_PIXEL_DISPLAY_COLOR_THEME", "warm_amber")
+    monkeypatch.setenv("GT7ENG_SECOND_DISPLAY_COLOR_THEME", "night_vision")
+
+    config = AppConfig.from_env()
+
+    assert config.pixel_display.color_theme == "warm_amber"
+    assert config.second_display.color_theme == "warm_amber"
 
 
 def test_second_display_invalid_env_falls_back(monkeypatch):

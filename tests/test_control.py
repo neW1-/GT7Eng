@@ -148,6 +148,32 @@ def test_pixel_control_persists_runtime_config_and_preview(tmp_path):
     assert preview.content.startswith(b"\x89PNG")
 
 
+def test_pixel_theme_change_reconfigures_second_display_runtime(tmp_path):
+    app = create_app(AppConfig(), telemetry_mode="none", project_root=tmp_path)
+    client = TestClient(app)
+    calls: list[str] = []
+
+    async def pixel_reconfigure() -> None:
+        calls.append("pixel")
+
+    async def second_reconfigure() -> None:
+        calls.append("second")
+
+    app.state.service.pixel_display.reconfigure = pixel_reconfigure
+    app.state.service.second_display.reconfigure = second_reconfigure
+
+    response = client.patch(
+        "/api/control/pixel-display",
+        json={"color_theme": "warm_amber"},
+    )
+
+    assert response.status_code == 200
+    assert calls == ["pixel", "second"]
+    status = response.json()["status"]
+    assert status["config"]["pixel_display"]["color_theme"] == "warm_amber"
+    assert status["config"]["second_display"]["color_theme"] == "warm_amber"
+
+
 def test_second_display_control_persists_runtime_config_and_preview(tmp_path):
     app = create_app(AppConfig(), telemetry_mode="none", project_root=tmp_path)
     client = TestClient(app)
@@ -158,7 +184,7 @@ def test_second_display_control_persists_runtime_config_and_preview(tmp_path):
             "enabled": False,
             "address": "coach-device",
             "brightness": 44,
-            "color_theme": "warm_amber",
+            "color_theme": "purple",
             "alert_hold_seconds": 3.5,
             "flash_hold_seconds": 1.2,
             "active_color": "#ffee00",

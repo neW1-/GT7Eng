@@ -220,7 +220,7 @@ class AppConfig:
             value = _verbosity(os.getenv(_verbosity_env_key(category)))
             if value is not None:
                 verbosity[category] = value
-        return cls(
+        config = cls(
             preset=preset,
             ps_ip=os.getenv("GT7ENG_PS_IP") or None,
             heartbeat_type=os.getenv("GT7ENG_HEARTBEAT", "B"),
@@ -467,6 +467,8 @@ class AppConfig:
                 ),
             ),
         )
+        config.second_display.color_theme = config.pixel_display.color_theme
+        return config
 
     def set_preset(self, preset: str) -> None:
         self.preset = preset

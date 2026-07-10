@@ -26,7 +26,7 @@ const fields = {
   suggestedGear: document.querySelector("#suggested-gear"),
   tireHot: document.querySelector("#tire-hot"),
   tireSpread: document.querySelector("#tire-spread"),
-  tireWear: document.querySelector("#tire-wear"),
+  tireAge: document.querySelector("#tire-age"),
   incident: document.querySelector("#incident"),
   wheelspin: document.querySelector("#wheelspin"),
   lockups: document.querySelector("#lockups"),
@@ -114,7 +114,6 @@ const pixelFields = {
 const secondDisplayFields = {
   enabled: document.querySelector("#second-display-enabled-control"),
   address: document.querySelector("#second-display-address-control"),
-  color_theme: document.querySelector("#second-display-theme-control"),
   brightness: document.querySelector("#second-display-brightness-control"),
   dim_brightness: document.querySelector("#second-display-dim-control"),
   orientation: document.querySelector("#second-display-orientation-control"),
@@ -186,6 +185,13 @@ function wheelMax(values) {
 function wheelSpread(values) {
   const present = wheelValues(values);
   return present.length ? Math.max(...present) - Math.min(...present) : null;
+}
+
+function lapsText(value) {
+  if (value === null || value === undefined) return "--";
+  const count = Number(value);
+  if (!Number.isFinite(count)) return "--";
+  return `${count} ${count === 1 ? "lap" : "laps"}`;
 }
 
 function fillOptions(select, options) {
@@ -260,7 +266,7 @@ function render(data, { forceControls = false } = {}) {
   fields.suggestedGear.textContent = snap.suggested_gear ?? "--";
   fields.tireHot.textContent = fmt(wheelMax(snap.tire_temps), "°", 0);
   fields.tireSpread.textContent = fmt(wheelSpread(snap.tire_temps), "°", 0);
-  fields.tireWear.textContent = fmt(wheelMax(snap.tire_wear_percent), "%", 0);
+  fields.tireAge.textContent = lapsText(snap.tire_age_laps);
   fields.incident.textContent = snap.incident_status || "--";
   fields.wheelspin.textContent = snap.driving_style?.wheelspin_events ?? 0;
   fields.lockups.textContent = snap.driving_style?.lockup_events ?? 0;
@@ -415,7 +421,6 @@ function initializeControls(data) {
   fillOptions(pixelFields.rev_position, options.pixel?.rev_positions || []);
   fillOptions(pixelFields.rev_scale, options.pixel?.rev_scales || []);
   fillOptions(pixelFields.shift_mode, options.pixel?.shift_modes || []);
-  fillOptions(secondDisplayFields.color_theme, options.second_display?.color_themes || []);
   fillOptions(secondDisplayFields.size_source, options.second_display?.size_sources || []);
 
   controls.verbosityControls.replaceChildren(

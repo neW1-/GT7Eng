@@ -15,7 +15,7 @@ The rig display path now supports two BLE matrices: a primary gear/rev display a
 - [x] Add Piper/radio-style TTS while keeping macOS `say` as fallback.
 - [x] Add race lifecycle handling for loading/menu/paused/finished states.
 - [x] Normalize richer telemetry fields for motion, tire radius, and driving aids.
-- [x] Add lap delta, final-lap, tire-wear, spin, and driving-style monitors.
+- [x] Add lap delta, final-lap, tire-age, spin, and driving-style monitors.
 - [x] Add HUD and `doctor` status for STT, TTS, session phase, and Discord receive health.
 
 ## Core Architecture
@@ -68,7 +68,7 @@ The rig display path now supports two BLE matrices: a primary gear/rev display a
   - [x] Motion, rotation, angular velocity, tire radius, TCS/ASM, handbrake, rev-limit, and in-gear flags.
   - [x] Live wheelspin and lockup flags plus per-lap TC/ASM/WS/LCK event counts.
   - [x] Tire age in completed laps from race start, reset by inferred pit service.
-  - [x] Pit service is inferred from refuel of at least 1 percentage point, estimated worst tire wear dropping by at least 5 percentage points, or at least two tire radii increasing by at least 1.5%; explicit pit lane, tire compound, and tire-change state are not available from the current telemetry.
+  - [x] Pit service is inferred from refuel of at least 1 percentage point versus the current stint low, or at least two tire radii increasing by at least 1.5%; explicit pit lane, tire compound, and tire-change state are not available from the current telemetry.
   - [x] Track ID/name once detected.
 - Store session state:
   - [x] Rolling frame buffer.
@@ -201,7 +201,7 @@ The rig display path now supports two BLE matrices: a primary gear/rev display a
   - [x] Current lap, laps left, position, last/best lap.
   - [x] Fuel stint range, finish margin, and pit recommendation.
   - [x] Tire temps and car health via API; compact car panel in HUD.
-  - [x] Session phase, STT/TTS status, tire wear estimate, incident, and driving-style panels.
+  - [x] Session phase, STT/TTS status, tire age, incident, and driving-style panels.
   - [x] Alert feed.
   - [x] Voice mode status.
   - [x] Discord bridge process and heartbeat status in HUD.
@@ -326,12 +326,12 @@ The rig display path now supports two BLE matrices: a primary gear/rev display a
   - [x] Fuel burn and pit recommendation.
   - [x] Pit urgency rules for “pit required,” “box within 1 lap,” and “box this lap.”
   - [x] Retry/new-session fuel-history reset and unstable fuel-projection suppression.
-  - [x] Tire-age incrementing, refuel/tire-wear reset detection, and tire-age voice/display alerts.
+  - [x] Tire-age incrementing, refuel/tire-radius reset detection, and tire-age voice/display alerts.
   - [x] Spoken lap delta logic against completed-lap history.
   - [x] Per-lap driving coaching alerts do not reuse stale cumulative wheelspin/lockup counts.
   - [x] Short-turn memory follow-ups for best lap, last lap, fuel burn, last-lap fuel, position, expiry, and LLM context payloads.
   - [x] Alert cooldowns and verbosity.
-  - [x] Session phase, tire wear, incident, driving-style, STT transcript, and audio-status API behavior.
+  - [x] Session phase, tire age, incident, driving-style, STT transcript, and audio-status API behavior.
   - [x] `.env` writer preserves comments/order, updates known keys, appends missing keys, and writes atomically.
   - [x] Local-only control guard allows loopback clients and rejects LAN clients.
   - [x] HUD control endpoints persist settings and update runtime config for preset, verbosity, voice mode, mute, STT, and primary/second pixel display settings.

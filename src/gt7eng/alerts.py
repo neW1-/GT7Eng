@@ -19,7 +19,6 @@ class AlertManager:
         self._last_by_key: dict[str, float] = {}
         self._system_connected: bool | None = None
         self._fuel_thresholds_announced: set[int] = set()
-        self._tire_wear_stage = 0
         self._pending_position_start: int | None = None
         self._pending_position_latest: int | None = None
         self._pending_position_changed_at: float | None = None
@@ -283,24 +282,6 @@ class AlertManager:
             and self._allowed("tire_spread", 45)
         ):
             alerts.append(self._alert("tires", "info", "Tire temperature spread is building."))
-        wear = snapshot.tire_wear_percent.max()
-        if wear is not None and self.config.category_enabled("tires", "balanced"):
-            stage = 0
-            if wear >= 40:
-                stage = 3
-            elif wear >= 25:
-                stage = 2
-            elif wear >= 15:
-                stage = 1
-            if stage > self._tire_wear_stage and self._allowed("tire_wear", 90):
-                self._tire_wear_stage = stage
-                alerts.append(
-                    self._alert(
-                        "tires",
-                        "important" if stage >= 2 else "info",
-                        f"Estimated tire wear is {wear:.0f} percent on the worst corner.",
-                    )
-                )
         return alerts
 
     def _incident_alerts(self, update: StateUpdate) -> list[Alert]:

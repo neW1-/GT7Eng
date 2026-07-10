@@ -17,6 +17,9 @@ from .pixel_themes import PREBUILT_PIXEL_THEMES
 logger = logging.getLogger(__name__)
 
 Color = tuple[int, int, int]
+TIRE_NORMAL_COLOR = "00ff00"
+TIRE_WARM_COLOR = "ffee00"
+TIRE_HOT_COLOR = "ff0000"
 
 
 FONT: dict[str, list[str]] = {
@@ -738,7 +741,9 @@ class SecondDisplayManager:
             "lck": (snapshot.lockup_active, stats.lockup_events),
         }
         for key, (active, count) in values.items():
-            if active or count > self._last_counts[key]:
+            if count < self._last_counts[key]:
+                self._active_until[key] = 0.0
+            elif active or count > self._last_counts[key]:
                 self._active_until[key] = now + self.config.flash_hold_seconds
             self._last_counts[key] = count
 
@@ -874,9 +879,9 @@ def palette_from_config(config: SecondDisplayConfig) -> SecondDisplayPalette:
         delta_good=_hex_to_rgb(theme["fuel_safe"]),
         delta_bad=_hex_to_rgb("ff2d2d"),
         dim=color("dim_color", "203038"),
-        tire_normal=color("tire_normal_color", theme["fuel_safe"]),
-        tire_warm=color("tire_warm_color", theme["fuel_warn"]),
-        tire_hot=color("tire_hot_color", theme["fuel_critical"]),
+        tire_normal=color("tire_normal_color", TIRE_NORMAL_COLOR),
+        tire_warm=color("tire_warm_color", TIRE_WARM_COLOR),
+        tire_hot=color("tire_hot_color", TIRE_HOT_COLOR),
     )
 
 

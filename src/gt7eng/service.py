@@ -534,6 +534,8 @@ class RaceEngineerService:
         last_lap = snapshot.lap_history[-1]
         if snapshot.fuel_level is None and last_lap.fuel_used is None:
             return
+        if _fuel_lap_page_is_unneeded(snapshot.fuel_level, last_lap.fuel_used):
+            return
         self.second_display.publish_alert(
             Alert(
                 id=0,
@@ -696,6 +698,19 @@ class RaceEngineerService:
         )
         for job in reversed(jobs):
             self.voice_jobs.appendleft(job)
+
+
+def _fuel_lap_page_is_unneeded(
+    fuel_level: float | None,
+    fuel_used: float | None,
+) -> bool:
+    if fuel_level is None:
+        return False
+    if fuel_level < 99.95:
+        return False
+    if fuel_used is None:
+        return True
+    return fuel_used <= 0.05
 
 
 def _conversation_fact_data(intent: str, snapshot: RaceSnapshot) -> dict[str, object] | None:
